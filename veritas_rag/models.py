@@ -53,11 +53,24 @@ class ConflictItem(BaseModel):
     subject: str
     claim_a: str
     source_a: str
+    value_a: Optional[str] = None
     claim_b: str
     source_b: str
+    value_b: Optional[str] = None
+    delta: Optional[str] = None
+    unit: Optional[str] = None
+    condition: Optional[str] = None
     discrepancy_type: str # quantitative, temporal, policy_revision, contradictory
     severity: str # high, medium, notice
     explanation: str
+
+class ReportExportRequest(BaseModel):
+    query: str
+    answer: str
+    citations: List[Citation]
+    conflicts: List[ConflictItem]
+    groundedness_score: float
+    format: str = "markdown" # markdown, json, text
 
 class QueryRequest(BaseModel):
     question: str
