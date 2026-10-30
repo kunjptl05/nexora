@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-[#FAF7F2] text-stone-900">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexora</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #FAF7F2; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    .skin-surface {
+      background: #FFFFFF;
+      border: 1px solid #EBE3D5;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+    .skin-card {
+      background: #FFFFFF;
+      border: 1px solid #EDE6D8;
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #F5EFE6; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #D6C9B6; border-radius: 9999px; }
+    dialog::backdrop {
+      background: rgba(28, 25, 23, 0.45);
+      backdrop-filter: blur(5px);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col overflow-hidden bg-[#FAF7F2] text-stone-900">
+
+  <!-- Top Navigation Bar -->
+  <header class="h-16 border-b border-[#E8DFCFC] bg-white px-6 flex items-center justify-between shrink-0 z-20 shadow-xs">
+    <!-- Clean Nexora Brand (No subtitles or badges) -->
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-500 to-rose-500 flex items-center justify-center shadow-md shadow-orange-500/20 text-white">
+        <i data-lucide="sparkles" class="w-5 h-5 stroke-[2.5]"></i>
+      </div>
+      <h1 class="font-extrabold text-2xl tracking-tight text-stone-950">Nexora</h1>
+    </div>
+
+    <!-- Center Navigation Tabs: Outer bar is larger, inner buttons are smaller & sleek -->
+    <nav class="flex items-center gap-1.5 bg-[#EFE9DF] px-3 py-1.5 rounded-2xl border border-[#DFD5C5] shadow-inner">
+      <button onclick="switchTab('chat')" id="tabBtn-chat" class="tab-btn px-3 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-xs">
+        <i data-lucide="message-square" class="w-3 h-3"></i> Workspace
+      </button>
+      <button onclick="switchTab('docs')" id="tabBtn-docs" class="tab-btn px-3 py-1 rounded-xl text-[11px] font-medium flex items-center gap-1.5 transition-all text-stone-600 hover:text-stone-900 hover:bg-white/80">
+        <i data-lucide="files" class="w-3 h-3 text-stone-500"></i> Knowledge Base
+      </button>
+      <button onclick="switchTab('conflict')" id="tabBtn-conflict" class="tab-btn px-3 py-1 rounded-xl text-[11px] font-medium flex items-center gap-1.5 transition-all text-stone-600 hover:text-stone-900 hover:bg-white/80">
+        <i data-lucide="alert-triangle" class="w-3 h-3 text-orange-500"></i> Conflict Radar
+      </button>
+      <button onclick="switchTab('eval')" id="tabBtn-eval" class="tab-btn px-3 py-1 rounded-xl text-[11px] font-medium flex items-center gap-1.5 transition-all text-stone-600 hover:text-stone-900 hover:bg-white/80">
+        <i data-lucide="bar-chart-2" class="w-3 h-3 text-stone-500"></i> Benchmark Suite
+      </button>
+      <button onclick="switchTab('arch')" id="tabBtn-arch" class="tab-btn px-3 py-1 rounded-xl text-[11px] font-medium flex items-center gap-1.5 transition-all text-stone-600 hover:text-stone-900 hover:bg-white/80">
+        <i data-lucide="sliders" class="w-3 h-3 text-stone-500"></i> Engine & Specs
+      </button>
+    </nav>
+
+    <!-- Right Live Health Status & Add Document Button -->
+    <div class="flex items-center gap-2.5">
+      <button onclick="openUploadModal()" class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs">
+        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+        <span>Add Document</span>
+      </button>
+
+      <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-[#E2D8C6] text-xs font-semibold text-stone-700 shadow-xs">
+        <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+        <span id="statusModeText">Neural Engine Active</span>
+        <span id="docCountBadge" class="px-2 py-0.5 bg-orange-50 text-orange-800 rounded-md text-[10px] font-bold border border-orange-200">5 docs</span>
+      </div>
+      <button onclick="resetKnowledgeBase()" title="Reset to default benchmark documents" class="p-2 rounded-xl bg-white hover:bg-stone-50 text-stone-500 hover:text-stone-800 transition-colors border border-[#E2D8C6] shadow-xs">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content View Area -->
+  <main class="flex-1 overflow-hidden relative">
+
+    <!-- TAB 1: Chat & Workspace -->
+    <section id="tab-chat" class="h-full flex flex-col max-w-6xl mx-auto px-4 py-4">
+      <!-- Quick Demo Suggestion Pills -->
+      <div class="mb-3 shrink-0 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+        <button onclick="openUploadModal()" class="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold shrink-0 transition-all shadow-xs flex items-center gap-1.5">
+          <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+          <span>+ Add Document</span>
+        </button>
+        <span class="text-stone-300">|</span>
+        <span class="text-stone-500 font-bold flex items-center gap-1 shrink-0 text-[11px]">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-orange-500"></i> Quick Demonstrations:
+        </span>
+        <button onclick="runSamplePrompt('Compare solar panel efficiency, warranty period, and financial subsidies between the 2023 framework and the 2025 Modernization Act.')" 
+                class="px-3 py-1.5 rounded-full bg-white hover:bg-orange-50/70 border border-stone-200 text-stone-700 font-medium hover:text-stone-900 shrink-0 transition-all shadow-xs flex items-center gap-1.5 text-[11px]">
+          <span>⚡ Multi-Source + Conflict Detection</span>
+        </button>
+        <button onclick="runSamplePrompt('What is the battery storage roundtrip efficiency and degradation rate reported in the grid storage whitepaper?')" 
+                class="px-3 py-1.5 rounded-full bg-white hover:bg-orange-50/70 border border-stone-200 text-stone-700 font-medium hover:text-stone-900 shrink-0 transition-all shadow-xs flex items-center gap-1.5 text-[11px]">
+          <span>⚡ Deep Technical Extraction</span>
+        </button>
+        <button onclick="runSamplePrompt('What is the current market price of gold in India today?')" 
+                class="px-3 py-1.5 rounded-full bg-white hover:bg-rose-50/70 border border-stone-200 text-stone-700 font-medium hover:text-rose-900 shrink-0 transition-all shadow-xs flex items-center gap-1.5 text-[11px]">
+          <span>🛡️ Hallucination Abstention Guardrail</span>
+        </button>
+        <button onclick="runSamplePrompt('What caused the token gateway latency spike in the Q3 production incident post-mortem?')" 
+                class="px-3 py-1.5 rounded-full bg-white hover:bg-orange-50/70 border border-stone-200 text-stone-700 font-medium hover:text-stone-900 shrink-0 transition-all shadow-xs flex items-center gap-1.5 text-[11px]">
+          <span>⚡ Architecture Due Diligence</span>
+        </button>
+      </div>
+
+      <!-- Messages Stream Area -->
+      <div id="chatStream" class="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 pb-4">
+        <!-- Welcome Card -->
+        <div class="skin-surface rounded-2xl p-6 shadow-xs">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center shrink-0">
+              <i data-lucide="shield-check" class="w-6 h-6 text-orange-600"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-extrabold text-stone-900 mb-1">Welcome to Nexora</h2>
+              <p class="text-sm text-stone-600 leading-relaxed mb-4">
+                Nexora converts your document collections into evidence-backed, fully cited answers with autonomous **Cross-Document Conflict Radar**, **Verifiable Citation Inspector**, and **Hallucination Prevention Guardrails**.
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
+                <div class="p-3.5 rounded-xl bg-white border border-stone-200 shadow-2xs">
+                  <div class="font-bold text-stone-900 mb-1 flex items-center gap-1.5">
+                    <i data-lucide="git-compare" class="w-4 h-4 text-orange-500"></i> Conflict Radar
+                  </div>
+                  <p class="text-stone-500">Spots conflicting metrics, revised policies, and contradicting statements across documents.</p>
+                </div>
+                <div class="p-3.5 rounded-xl bg-white border border-stone-200 shadow-2xs">
+                  <div class="font-bold text-stone-900 mb-1 flex items-center gap-1.5">
+                    <i data-lucide="link" class="w-4 h-4 text-orange-500"></i> Clickable Citations
+                  </div>
+                  <p class="text-stone-500">Every synthesized sentence links directly to verified source passages with similarity match scores.</p>
+                </div>
+                <div class="p-3.5 rounded-xl bg-white border border-stone-200 shadow-2xs">
+                  <div class="font-bold text-stone-900 mb-1 flex items-center gap-1.5">
+                    <i data-lucide="shield-alert" class="w-4 h-4 text-rose-500"></i> Zero Hallucination
+                  </div>
+                  <p class="text-stone-500">Gracefully refuses to answer when evidence is missing or out-of-domain without inventing facts.</p>
+                </div>
+              </div>
+
+              <!-- Upload CTA on welcome card -->
+              <div class="mt-4 flex items-center gap-3">
+                <button onclick="openUploadModal()" class="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all">
+                  <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                  <span>Upload & Ingest New Document (PDF / Text)</span>
+                </button>
+                <button onclick="switchTab('docs')" class="px-3.5 py-2 bg-white hover:bg-stone-50 text-stone-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all border border-stone-200 shadow-xs">
+                  <i data-lucide="folder-kanban" class="w-3.5 h-3.5 text-stone-500"></i>
+                  <span>View All 5 Pre-Loaded Documents</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Box -->
+      <div class="mt-3 shrink-0">
+        <form id="queryForm" onsubmit="handleQuerySubmit(event)" class="relative">
+          <div class="relative rounded-2xl bg-white border border-stone-300 focus-within:border-orange-500 shadow-sm transition-all">
+            <textarea id="queryInput" rows="2" placeholder="Ask a question across your documents (e.g. 'Compare solar efficiency and warranty requirements between 2023 and 2025')..." 
+                      class="w-full bg-transparent px-4 py-3 text-sm text-stone-900 placeholder-stone-400 focus:outline-none resize-none"></textarea>
+            
+            <div class="flex items-center justify-between px-3 py-2 border-t border-stone-100 bg-[#FAF7F2] rounded-b-2xl">
+              <div class="flex items-center gap-3 text-xs text-stone-600">
+                <button type="button" onclick="openUploadModal()" class="px-3 py-1 bg-white hover:bg-orange-50 text-stone-800 border border-stone-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs">
+                  <i data-lucide="upload-cloud" class="w-3.5 h-3.5 text-orange-500"></i>
+                  <span>Add Document</span>
+                </button>
+                <span class="text-stone-300">|</span>
+                <label class="flex items-center gap-1.5 cursor-pointer hover:text-stone-900">
+                  <input type="checkbox" id="useHybridToggle" checked class="rounded border-stone-300 text-orange-500 focus:ring-0">
+                  <span class="font-medium text-[11px]">Hybrid Neural + Lexical Search</span>
+                </label>
+                <span class="text-stone-300">|</span>
+                <span class="flex items-center gap-1 text-[11px]">
+                  <span>Top-K:</span>
+                  <select id="topKSelect" class="bg-white text-stone-800 rounded px-2 py-0.5 border border-stone-200 font-medium">
+                    <option value="3">3</option>
+                    <option value="5" selected>5</option>
+                    <option value="8">8</option>
+                  </select>
+                </span>
+              </div>
+              <button type="submit" id="sendBtn" class="px-5 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50">
+                <span>Synthesize</span>
+                <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB 2: Knowledge Base -->
+    <section id="tab-docs" class="hidden h-full max-w-6xl mx-auto px-4 py-4 overflow-y-auto custom-scrollbar">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-lg font-bold text-stone-900 flex items-center gap-2">
+            <i data-lucide="folder-kanban" class="w-5 h-5 text-orange-500"></i> Document Knowledge Base
+          </h2>
+          <p class="text-xs text-stone-500">Manage indexed collections, semantic sections, and vector embeddings.</p>
+        </div>
+        <button onclick="openUploadModal()" class="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-all shadow-xs">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i> Ingest New Document
+        </button>
+      </div>
+
+      <!-- Documents Grid / Table -->
+      <div id="documentsListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Loaded via JS -->
+      </div>
+    </section>
+
+    <!-- TAB 3: Conflict Radar Laboratory -->
+    <section id="tab-conflict" class="hidden h-full max-w-6xl mx-auto px-4 py-4 overflow-y-auto custom-scrollbar">
+      <div class="mb-6">
+        <h2 class="text-lg font-bold text-stone-900 flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-5 h-5 text-orange-500"></i> Cross-Document Conflict Radar
+        </h2>
+        <p class="text-xs text-stone-500">Claim Reconciliation Engine: detects discrepancies, opposing metrics, and revision updates between sources.</p>
+      </div>
+
+      <div class="skin-surface rounded-2xl p-6 mb-6">
+        <h3 class="text-sm font-bold text-stone-900 mb-2 flex items-center gap-2">
+          <i data-lucide="scan-line" class="w-4 h-4 text-orange-500"></i> How Nexora Resolves Real-World Contradictions
+        </h3>
+        <p class="text-xs text-stone-600 leading-relaxed mb-4">
+          Different document revisions or conflicting sources often present diverging facts (e.g. 2023 baseline regulations vs. 2025 modernized amendments). Nexora compares claims across documents, identifies exact numerical or policy discrepancies, and surfaces a detailed side-by-side reconciliation.
+        </p>
+        <button onclick="runSamplePrompt('Compare solar panel efficiency, warranty period, and financial subsidies between the 2023 framework and the 2025 Modernization Act.')" 
+                class="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs">
+          <i data-lucide="play" class="w-4 h-4"></i> Run Live Conflict Reconciliation Demo
+        </button>
+      </div>
+
+      <div id="conflictLabResults" class="space-y-4">
+        <div class="p-8 rounded-2xl bg-white border border-[#E8DFCFC] text-center text-stone-500 text-xs">
+          Click the demonstration button above or enter a query in the Workspace to view the live Conflict Radar in action.
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Benchmark & Evaluation Suite -->
+    <section id="tab-eval" class="hidden h-full max-w-6xl mx-auto px-4 py-4 overflow-y-auto custom-scrollbar">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-lg font-bold text-stone-900 flex items-center gap-2">
+            <i data-lucide="bar-chart-2" class="w-5 h-5 text-orange-500"></i> Accuracy & Benchmark Evaluation Suite
+          </h2>
+          <p class="text-xs text-stone-500">Measures Hit Rate@k, Mean Reciprocal Rank (MRR), Precision, Conflict Detection, and Groundedness against ground truth.</p>
+        </div>
+        <button onclick="runFullBenchmark()" id="btnRunBenchmark" class="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all">
+          <i data-lucide="play-circle" class="w-4 h-4"></i> Run Full Benchmark Suite
+        </button>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        <div class="skin-card p-4 rounded-xl border border-stone-200">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Hit Rate @ 3</span>
+          <div id="evalHitRate" class="text-2xl font-extrabold text-stone-900 mt-1">100%</div>
+          <span class="text-[10px] text-stone-500">Source in top-3</span>
+        </div>
+        <div class="skin-card p-4 rounded-xl border border-stone-200">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">MRR</span>
+          <div id="evalMRR" class="text-2xl font-extrabold text-stone-900 mt-1">0.85</div>
+          <span class="text-[10px] text-stone-500">Mean Reciprocal Rank</span>
+        </div>
+        <div class="skin-card p-4 rounded-xl border border-stone-200">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Precision @ 3</span>
+          <div id="evalPrecision" class="text-2xl font-extrabold text-stone-900 mt-1">1.00</div>
+          <span class="text-[10px] text-stone-500">Relevant density</span>
+        </div>
+        <div class="skin-card p-4 rounded-xl border border-stone-200">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Conflict Accuracy</span>
+          <div id="evalConflictAcc" class="text-2xl font-extrabold text-orange-600 mt-1">100%</div>
+          <span class="text-[10px] text-stone-500">Contradictions caught</span>
+        </div>
+        <div class="skin-card p-4 rounded-xl border border-stone-200">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Abstention Fidelity</span>
+          <div id="evalAbstentionAcc" class="text-2xl font-extrabold text-stone-900 mt-1">100%</div>
+          <span class="text-[10px] text-stone-500">Zero hallucination</span>
+        </div>
+        <div class="skin-card p-4 rounded-xl border border-stone-200">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Avg Latency</span>
+          <div id="evalLatency" class="text-2xl font-extrabold text-stone-800 mt-1">2 ms</div>
+          <span class="text-[10px] text-stone-500">Response speed</span>
+        </div>
+      </div>
+
+      <!-- Detailed Test Matrix Table -->
+      <div class="skin-surface rounded-2xl overflow-hidden shadow-xs">
+        <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between bg-white">
+          <h3 class="text-xs font-bold text-stone-900 uppercase tracking-wider">Evaluation Test Case Results</h3>
+          <span class="text-xs text-stone-500 font-medium">Ground-Truth Benchmark Matrix</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-stone-700">
+            <thead class="bg-[#FAF7F2] text-stone-500 uppercase text-[10px] font-bold border-b border-stone-200">
+              <tr>
+                <th class="px-4 py-3">Test ID</th>
+                <th class="px-4 py-3">Query</th>
+                <th class="px-4 py-3">Expected Docs</th>
+                <th class="px-4 py-3">Hit Status</th>
+                <th class="px-4 py-3">Conflict</th>
+                <th class="px-4 py-3">Abstained</th>
+                <th class="px-4 py-3">Groundedness</th>
+                <th class="px-4 py-3">Latency</th>
+              </tr>
+            </thead>
+            <tbody id="evalTableBody" class="divide-y divide-stone-100 font-mono">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: Engine & Specs -->
+    <section id="tab-arch" class="hidden h-full max-w-6xl mx-auto px-4 py-4 overflow-y-auto custom-scrollbar">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Configuration Column -->
+        <div class="lg:col-span-1 space-y-4">
+          <div class="skin-surface rounded-2xl p-5 shadow-xs">
+            <h3 class="text-sm font-bold text-stone-900 mb-2 flex items-center gap-2">
+              <i data-lucide="server" class="w-4 h-4 text-orange-500"></i> Cloud Cluster Integration
+            </h3>
+            <p class="text-xs text-stone-500 mb-4">Connect to your enterprise database cluster for scale.</p>
+            
+            <form onsubmit="handleMongoConfigSubmit(event)" class="space-y-3 text-xs">
+              <div>
+                <label class="block text-stone-700 font-bold mb-1">Cluster Connection URI</label>
+                <input type="password" id="mongoUriInput" placeholder="cluster+srv://user:pass@endpoint.cloud/..." 
+                       class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 focus:outline-none focus:border-orange-500 font-mono">
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-stone-700 font-bold mb-1">Database</label>
+                  <input type="text" id="mongoDbInput" value="nexora_db" 
+                         class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 font-mono">
+                </div>
+                <div>
+                  <label class="block text-stone-700 font-bold mb-1">Collection</label>
+                  <input type="text" id="mongoCollInput" value="knowledge_chunks" 
+                         class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 font-mono">
+                </div>
+              </div>
+              <div>
+                <label class="block text-stone-700 font-bold mb-1">Vector Index</label>
+                <input type="text" id="mongoIndexInput" value="vector_index" 
+                       class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 font-mono">
+              </div>
+              <button type="submit" class="w-full py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-lg shadow-xs transition-all">
+                Connect & Verify Cluster
+              </button>
+            </form>
+          </div>
+
+          <!-- AI Model Configuration -->
+          <div class="skin-surface rounded-2xl p-5 shadow-xs">
+            <h3 class="text-sm font-bold text-stone-900 mb-2 flex items-center gap-2">
+              <i data-lucide="key" class="w-4 h-4 text-orange-500"></i> AI Model Configuration (Optional)
+            </h3>
+            <p class="text-xs text-stone-500 mb-3">Enables live generative model inference. The platform operates 100% offline without any API key.</p>
+            <form onsubmit="handleGeminiKeySubmit(event)" class="space-y-3 text-xs">
+              <div>
+                <input type="password" id="geminiKeyInput" placeholder="AIzaSy..." 
+                       class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 font-mono focus:border-orange-500 focus:outline-none">
+              </div>
+              <button type="submit" class="w-full py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-lg transition-all shadow-xs">
+                Update Model Credentials
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Architecture & Explanation Column -->
+        <div class="lg:col-span-2 space-y-4">
+          <!-- Architecture Flow -->
+          <div class="skin-surface rounded-2xl p-6 shadow-xs">
+            <h3 class="text-sm font-bold text-stone-900 mb-3 flex items-center gap-2">
+              <i data-lucide="layers" class="w-4 h-4 text-orange-500"></i> Nexora Platform Architecture
+            </h3>
+            <div class="p-4 rounded-xl bg-[#FAF7F2] border border-stone-200 text-xs font-mono space-y-3 leading-relaxed">
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-1 rounded bg-orange-100 text-orange-950 font-bold border border-orange-200">1. Ingestion</span>
+                <span class="text-stone-700">PDF & Text Parsing → Semantic Boundary Chunker → Metadata Enrichment</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-1 rounded bg-orange-100 text-orange-950 font-bold border border-orange-200">2. Storage</span>
+                <span class="text-stone-700">Unified Knowledge Store: Raw Content + Dense Embeddings + Filter Attributes</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-1 rounded bg-orange-100 text-orange-950 font-bold border border-orange-200">3. Hybrid Retrieval</span>
+                <span class="text-stone-700">Dense Vector Similarity + Lexical Token Matching → Reciprocal Rank Fusion</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-1 rounded bg-orange-100 text-orange-950 font-bold border border-orange-200">4. Conflict Radar</span>
+                <span class="text-stone-700">Autonomous Claim Reconciliation (Quantitative, Version & Policy Discrepancies)</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-1 rounded bg-orange-100 text-orange-950 font-bold border border-orange-200">5. Grounded Synthesis</span>
+                <span class="text-stone-700">Abstention Verification → Token-Level Citation Linking → Groundedness Verification</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Neural Vector Search Index Specification -->
+          <div class="skin-surface rounded-2xl p-6 shadow-xs">
+            <h3 class="text-sm font-bold text-stone-900 mb-2 flex items-center gap-2">
+              <i data-lucide="code" class="w-4 h-4 text-orange-500"></i> Neural Search Index Definition
+            </h3>
+            <p class="text-xs text-stone-500 mb-3">Enterprise vector index schema definition for multi-field neural search:</p>
+            <pre class="p-4 rounded-xl bg-white border border-stone-200 text-[11px] text-stone-800 overflow-x-auto">{
+  "mappings": {
+    "dynamic": true,
+    "fields": {
+      "embedding": {
+        "dimensions": 768,
+        "similarity": "cosine",
+        "type": "knnVector"
+      },
+      "metadata.category": {
+        "type": "token"
+      },
+      "metadata.year": {
+        "type": "number"
+      }
+    }
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Sliding Passage Inspector Modal / Dialog -->
+  <dialog id="passageModal" class="rounded-2xl p-0 border border-stone-300 bg-white text-stone-900 max-w-2xl w-full shadow-2xl overflow-hidden">
+    <div class="p-5 border-b border-stone-200 flex items-center justify-between bg-[#FAF7F2]">
+      <div class="flex items-center gap-2">
+        <i data-lucide="file-text" class="w-4 h-4 text-orange-500"></i>
+        <h3 id="modalTitle" class="text-sm font-bold text-stone-900">Source Passage Inspector</h3>
+      </div>
+      <button onclick="document.getElementById('passageModal').close()" class="p-1 rounded-lg hover:bg-stone-200 text-stone-600">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="p-6 space-y-4 text-xs max-h-[70vh] overflow-y-auto custom-scrollbar">
+      <div class="flex flex-wrap items-center gap-2" id="modalBadges">
+        <!-- Badges like Similarity, Keyword, Section, Page -->
+      </div>
+      <div>
+        <span class="block text-stone-600 font-bold mb-1">Passage Content:</span>
+        <div id="modalContent" class="p-4 rounded-xl bg-[#FAF7F2] border border-stone-200 text-stone-800 font-mono leading-relaxed whitespace-pre-wrap"></div>
+      </div>
+      <div class="pt-2 border-t border-stone-100 flex items-center justify-between text-stone-500 text-[11px]">
+        <span id="modalDocId">Doc ID: ...</span>
+        <span id="modalChunkId">Chunk ID: ...</span>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Upload Modal -->
+  <dialog id="uploadModal" class="rounded-2xl p-0 border border-stone-300 bg-white text-stone-900 max-w-xl w-full shadow-2xl overflow-hidden">
+    <div class="p-5 border-b border-stone-200 flex items-center justify-between bg-[#FAF7F2]">
+      <div class="flex items-center gap-2">
+        <i data-lucide="upload-cloud" class="w-4 h-4 text-orange-500"></i>
+        <h3 class="text-sm font-bold text-stone-900">Ingest Document to Knowledge Base</h3>
+      </div>
+      <button onclick="document.getElementById('uploadModal').close()" class="p-1 rounded-lg hover:bg-stone-200 text-stone-600">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <form onsubmit="handleUploadSubmit(event)" class="p-6 space-y-4 text-xs">
+      <div>
+        <label class="block text-stone-700 font-bold mb-1">Document Title</label>
+        <input type="text" id="upTitle" required placeholder="e.g. Clean Energy Standard 2026" 
+               class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 focus:outline-none focus:border-orange-500">
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-stone-700 font-bold mb-1">Category</label>
+          <input type="text" id="upCategory" value="Clean Energy" 
+                 class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
+        </div>
+        <div>
+          <label class="block text-stone-700 font-bold mb-1">Author</label>
+          <input type="text" id="upAuthor" value="Energy Commission" 
+                 class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
+        </div>
+        <div>
+          <label class="block text-stone-700 font-bold mb-1">Year</label>
+          <input type="number" id="upYear" value="2025" 
+                 class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
+        </div>
+      </div>
+      <div>
+        <label class="block text-stone-700 font-bold mb-1">Upload File (PDF / TXT / MD)</label>
+        <input type="file" id="upFile" accept=".pdf,.txt,.md,.json" 
+               class="w-full text-stone-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-stone-100 file:text-stone-800 hover:file:bg-stone-200">
+      </div>
+      <div>
+        <label class="block text-stone-700 font-bold mb-1">Or Paste Direct Text Content</label>
+        <textarea id="upText" rows="4" placeholder="# Paste markdown or plain text content here..." 
+                  class="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 focus:outline-none focus:border-orange-500 font-mono"></textarea>
+      </div>
+      <div class="pt-2 flex justify-end gap-2">
+        <button type="button" onclick="document.getElementById('uploadModal').close()" class="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold">Cancel</button>
+        <button type="submit" id="btnUploadSubmit" class="px-5 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:brightness-105 text-white font-bold rounded-lg shadow-xs">Ingest & Index</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Client JavaScript -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
