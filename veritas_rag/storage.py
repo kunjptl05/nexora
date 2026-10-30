@@ -1,6 +1,8 @@
 import time
 import math
 import re
+import os
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from veritas_rag.models import DocumentChunk, SearchFilters, Citation
 from veritas_rag.config import config
@@ -13,13 +15,41 @@ class StorageService:
         self.collection = None
         self.is_connected = False
         self.active_mode = "neural-hybrid-engine" # or "cloud-cluster-active"
+        self._data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_store.json")
         
         # In-memory storage for zero-config fallback & benchmarking
         self._chunks: Dict[str, DocumentChunk] = {}
         self._documents: Dict[str, Dict[str, Any]] = {}
         
+        # Load persisted data from disk if available
+        self._load_from_disk()
+        
         if config.mongodb_uri:
             self.connect_mongodb(config.mongodb_uri, config.mongodb_database, config.mongodb_collection)
+
+    def _save_to_disk(self):
+        try:
+            data = {
+                "documents": self._documents,
+                "chunks": {cid: c.model_dump() for cid, c in self._chunks.items()}
+            }
+            with open(self._data_file, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"[StorageService] Failed to save to disk: {e}")
+
+    def _load_from_disk(self):
+        if os.path.exists(self._data_file):
+            try:
+                with open(self._data_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._documents = data.get("documents", {})
+                    chunks_raw = data.get("chunks", {})
+                    for cid, cdata in chunks_raw.items():
+                        self._chunks[cid] = DocumentChunk(**cdata)
+                print(f"[StorageService] Restored {len(self._documents)} documents and {len(self._chunks)} chunks from disk.")
+            except Exception as e:
+                print(f"[StorageService] Error loading from disk: {e}")
 
     def connect_mongodb(self, uri: str, db_name: str, coll_name: str) -> Tuple[bool, str]:
         """Attempts connection to Cloud Cluster."""
@@ -65,13 +95,16 @@ class StorageService:
             if c.doc_id in self._documents:
                 self._documents[c.doc_id]["chunk_count"] += 1
 
-        # If connected to MongoDB Atlas, persist documents & embeddings
-        if self.is_connected and self.collection is not None:
-            try:
-                docs_to_insert = [c.model_dump() for c in chunks]
-                self.collection.insert_many(docs_to_insert)
-            except Exception as e:
-                print(f"[StorageService] Failed to insert to MongoDB: {e}")
+        self._save_to_disk()
+
+    def delete_document(self, doc_id: str) -> bool:
+        if doc_id in self._documents:
+            del self._documents[doc_id]
+            # Delete corresponding chunks
+            self._chunks = {cid: c for cid, c in self._chunks.items() if c.doc_id != doc_id}
+            self._save_to_disk()
+            return True
+        return False
 
     def list_documents(self) -> List[Dict[str, Any]]:
         return list(self._documents.values())
@@ -185,7 +218,8 @@ class StorageService:
         # Keyword / BM25 token overlap scores
         keyword_ranked = []
         for chunk in candidates:
-            chunk_words = set(re.findall(r'\b[a-z0-9]+\b', chunk.content.lower())) - stopwords
+            searchable_text = f"{chunk.doc_title} {chunk.section or ''} {chunk.content}".lower()
+            chunk_words = set(re.findall(r'\b[a-z0-9]+\b', searchable_text)) - stopwords
             if not chunk_words:
                 kw_score = 0.0
             else:
@@ -327,3 +361,9 @@ class StorageService:
         return max(0.0, min(1.0, dot))
 
 storage_service = StorageService()
+if not storage_service._documents:
+    try:
+        from veritas_rag.samples import load_sample_datasets
+        load_sample_datasets()
+    except Exception as e:
+        print(f"[StorageService] Auto-init error: {e}")
