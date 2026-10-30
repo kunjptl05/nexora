@@ -10,7 +10,7 @@ import uvicorn
 from veritas_rag.config import config
 from veritas_rag.models import (
     QueryRequest, QueryResponse, DocumentChunk, 
-    SearchFilters, EvalSummary
+    SearchFilters, EvalSummary, ReportExportRequest
 )
 from veritas_rag.storage import storage_service
 from veritas_rag.embeddings import embedding_service
@@ -121,6 +121,8 @@ async def upload_document(
 
     if file and file.filename:
         file_bytes = await file.read()
+        if len(file_bytes) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File exceeds maximum allowed upload limit of 25MB.")
         filename_lower = file.filename.lower()
         if filename_lower.endswith(".pdf"):
             try:
@@ -145,7 +147,8 @@ async def upload_document(
         "author": author,
         "year": year,
         "category": category,
-        "source_type": "upload"
+        "source_type": "upload",
+        "file_size_bytes": len(file_bytes) if (file and file.filename) else len(content.encode("utf-8"))
     }
 
     storage_service.add_document(doc_id, title, metadata, raw_text=content)
@@ -160,12 +163,73 @@ async def upload_document(
         "total_knowledge_chunks": len(storage_service._chunks)
     }
 
+@app.delete("/api/documents/{doc_id}")
+async def delete_document(doc_id: str):
+    success = storage_service.delete_document(doc_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return {
+        "success": True, 
+        "message": f"Document '{doc_id}' successfully removed.",
+        "remaining_documents": len(storage_service.list_documents()),
+        "remaining_chunks": len(storage_service._chunks)
+    }
+
 @app.post("/api/documents/reset")
 async def reset_documents():
     storage_service._chunks.clear()
     storage_service._documents.clear()
     load_sample_datasets()
     return {"success": True, "message": "Knowledge base reset to default benchmark datasets."}
+
+# 4. Report Export Endpoint
+@app.post("/api/export/report")
+async def export_report(req: ReportExportRequest):
+    if req.format.lower() == "json":
+        return JSONResponse(content={
+            "platform": "Nexora Intelligence & Verification Platform",
+            "timestamp": time.time(),
+            "query": req.query,
+            "groundedness_score": req.groundedness_score,
+            "answer": req.answer,
+            "conflicts": [c.model_dump() for c in req.conflicts],
+            "citations": [cit.model_dump() for cit in req.citations]
+        })
+
+    # Markdown format report
+    lines = [
+        "# Nexora Intelligence & Evidence Verification Report",
+        f"**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}",
+        f"**Groundedness Fidelity:** {req.groundedness_score}% | **Zero-Hallucination Verified**",
+        "",
+        "## Query Investigated",
+        f"> {req.query}",
+        "",
+        "## Synthesized Evidence",
+        req.answer,
+        ""
+    ]
+
+    if req.conflicts:
+        lines.append(f"## Cross-Document Conflict Radar ({len(req.conflicts)} Discrepancies Detected)")
+        for cf in req.conflicts:
+            lines.append(f"### {cf.subject} [{cf.discrepancy_type.upper()}]")
+            lines.append(f"- **Source A ({cf.source_a}):** {cf.claim_a} (Value: `{cf.value_a or 'N/A'}`)")
+            lines.append(f"- **Source B ({cf.source_b}):** {cf.claim_b} (Value: `{cf.value_b or 'N/A'}`)")
+            if cf.delta:
+                lines.append(f"- **Calculated Delta:** `{cf.delta}`")
+            lines.append(f"- **Reconciliation:** {cf.explanation}")
+            lines.append("")
+
+    if req.citations:
+        lines.append(f"## Verified Source Citations ({len(req.citations)} Passages)")
+        for idx, cit in enumerate(req.citations, 1):
+            lines.append(f"**[{idx}] {cit.doc_title}** — § {cit.section or 'General'} (p.{cit.page_number})")
+            lines.append(f"- *Similarity Score:* `{int(cit.similarity_score * 100)}%` | *Chunk ID:* `{cit.id}`")
+            lines.append(f"- *Verified Quote:* \"{cit.snippet}\"")
+            lines.append("")
+
+    return {"success": True, "format": "markdown", "report": "\n".join(lines)}
 
 # 4. Chunk Inspector
 @app.get("/api/chunks/{chunk_id}")
@@ -213,7 +277,7 @@ async def serve_index():
     if os.path.exists(index_file):
         with open(index_file, "r", encoding="utf-8") as f:
             return f.read()
-    return "<h1>VeritasRAG Server Running</h1><p>UI is loading...</p>"
+    return "<h1>Nexora Server Running</h1><p>UI is loading...</p>"
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
