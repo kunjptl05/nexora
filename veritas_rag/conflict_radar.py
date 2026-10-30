@@ -1,27 +1,52 @@
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from veritas_rag.models import Citation, ConflictItem
 import uuid
 
 class ConflictRadar:
     """
     Automated Cross-Document Claim Reconciliation Engine.
-    Scans retrieved passages for numerical, policy, or polarity contradictions.
+    Performs semantic claim extraction, delta calculations, and version comparison.
     """
+
+    def _extract_domain(self, text: str, doc_title: str) -> str:
+        combined = (text + " " + doc_title).lower()
+        if any(k in combined for k in ["solar", "photovoltaic", "pv", "panel", "perovskite", "monocrystalline"]):
+            return "solar_pv"
+        if any(k in combined for k in ["battery", "bess", "lfp", "grid storage", "roundtrip", "cycle", "cooling"]):
+            return "battery_storage"
+        if any(k in combined for k in ["auth", "jwt", "gateway", "token", "session", "redis", "latency"]):
+            return "software_auth"
+        return "general"
 
     def detect_conflicts(self, citations: List[Citation], query: str) -> List[ConflictItem]:
         if len(citations) < 2:
             return []
 
+        # Check if the query is an isolated single-version query (e.g. only mentions '2023 guidelines')
+        years_in_query = re.findall(r'\b(202[0-9])\b', query)
+        is_comparative = any(w in query.lower() for w in [
+            "compare", "vs", "versus", "between", "difference", "discrepancy", 
+            "contradict", "change", "updated", "revision", "how much", "what are the"
+        ]) or len(years_in_query) >= 2
+
+        # If user explicitly asked only about a single year/standard without comparison words, don't invent conflict
+        if len(years_in_query) == 1 and not is_comparative:
+            target_year = int(years_in_query[0])
+            citations = [c for c in citations if c.metadata.get("year") == target_year or str(target_year) in c.doc_title]
+            if len(citations) < 2:
+                return []
+
         conflicts: List[ConflictItem] = []
         
-        # 1. Check for numerical discrepancy on common metrics
+        # 1. Structured numerical claim extraction with Delta calculation
         num_conflicts = self._check_numerical_discrepancies(citations)
         conflicts.extend(num_conflicts)
 
         # 2. Check for policy & temporal revisions (e.g., 2023 vs 2025 updates)
-        temporal_conflicts = self._check_policy_revisions(citations)
-        conflicts.extend(temporal_conflicts)
+        if is_comparative:
+            temporal_conflicts = self._check_policy_revisions(citations)
+            conflicts.extend(temporal_conflicts)
 
         # 3. Check for polarity opposites (mandatory vs optional, allowed vs prohibited)
         polarity_conflicts = self._check_polarity_conflicts(citations)
@@ -30,49 +55,88 @@ class ConflictRadar:
         return conflicts
 
     def _check_numerical_discrepancies(self, citations: List[Citation]) -> List[ConflictItem]:
-        """Detects conflicting numbers associated with identical nouns/keywords."""
+        """Extracts structured metric claims and calculates mathematical deltas."""
         findings = []
         metrics_pattern = re.compile(
-            r'(\b(?:efficiency|warranty|guarantee|cost|price|rebate|subsidy|fee|sla|uptime|latency|throughput|timeout|limit)\b[^\.\n;]{1,60}?(\d+(?:\.\d+)?(?:\s*(?:%|years?|months?|days?|ms|seconds?|usd|\$|inr|₹|gb|mb|kw|kwh))?))',
+            r'(\b(?:efficiency|warranty|guarantee|cost|price|rebate|subsidy|fee|sla|uptime|latency|timeout|limit)\b[^\.\n;]{1,60}?(?:(\$|₹|€)?\s*(\d+(?:\.\d+)?)\s*(%|years?|months?|days?|ms|seconds?|usd|inr|gb|mb|kw|kwh)?))',
             re.IGNORECASE
         )
 
         extracted: List[Dict[str, Any]] = []
         for cit in citations:
             matches = metrics_pattern.findall(cit.snippet)
-            for full_match, val in matches:
-                # normalize metric name
-                metric_name = re.findall(r'\b(?:efficiency|warranty|guarantee|cost|price|rebate|subsidy|fee|sla|uptime|latency|throughput|timeout|limit)\b', full_match, re.IGNORECASE)
-                if metric_name:
-                    m = metric_name[0].lower()
+            for full_match, currency, num_str, unit in matches:
+                metric_match = re.findall(r'\b(?:efficiency|warranty|guarantee|cost|price|rebate|subsidy|fee|sla|uptime|latency|timeout|limit)\b', full_match, re.IGNORECASE)
+                if metric_match:
+                    m = metric_match[0].lower()
+                    try:
+                        numeric_val = float(num_str)
+                    except ValueError:
+                        numeric_val = None
+
+                    unit_clean = (currency or unit or "").strip()
+                    display_val = f"{currency or ''}{num_str} {unit or ''}".strip()
+                    domain = self._extract_domain(cit.snippet, cit.doc_title)
+
                     extracted.append({
                         "metric": m,
+                        "domain": domain,
                         "raw_statement": full_match.strip(),
-                        "value": val.strip(),
+                        "display_val": display_val,
+                        "numeric_val": numeric_val,
+                        "unit": unit_clean,
                         "doc_title": cit.doc_title,
                         "doc_id": cit.doc_id,
                         "section": cit.section or "Section",
-                        "page": cit.page_number
+                        "page": cit.page_number,
+                        "year": cit.metadata.get("year", 2025)
                     })
 
-        # Compare pairs across different documents
+        # Compare pairs across different documents within the same semantic domain
         for i in range(len(extracted)):
             for j in range(i + 1, len(extracted)):
                 e1 = extracted[i]
                 e2 = extracted[j]
-                if e1["doc_id"] != e2["doc_id"] and e1["metric"] == e2["metric"]:
-                    if e1["value"] != e2["value"]:
-                        # Found discrepancy!
+                if e1["doc_id"] != e2["doc_id"] and e1["metric"] == e2["metric"] and e1["domain"] == e2["domain"]:
+                    if e1["display_val"] != e2["display_val"]:
+                        # Calculate quantitative delta if both numeric
+                        delta_str = None
+                        if e1["numeric_val"] is not None and e2["numeric_val"] is not None:
+                            # Order by year/revision if available
+                            if e2["year"] >= e1["year"]:
+                                diff = e2["numeric_val"] - e1["numeric_val"]
+                                older, newer = e1, e2
+                            else:
+                                diff = e1["numeric_val"] - e2["numeric_val"]
+                                older, newer = e2, e1
+                            
+                            sign = "+" if diff > 0 else ""
+                            if "%" in (older["unit"] + newer["unit"]):
+                                delta_str = f"{sign}{diff:.1f}%"
+                            elif "$" in (older["unit"] + newer["unit"]):
+                                delta_str = f"{sign}${abs(diff):,.0f}" if diff < 0 else f"+${diff:,.0f}"
+                            elif "year" in (older["unit"] + newer["unit"]):
+                                delta_str = f"{sign}{int(diff) if diff.is_integer() else diff:.1f} years"
+                            elif "ms" in (older["unit"] + newer["unit"]):
+                                delta_str = f"{sign}{diff:.0f} ms"
+                            else:
+                                delta_str = f"{sign}{diff:.1f}"
+
                         c = ConflictItem(
                             id=f"cnf_{uuid.uuid4().hex[:6]}",
-                            subject=f"Conflicting {e1['metric'].capitalize()} Values",
-                            claim_a=f"'{e1['raw_statement']}' ({e1['doc_title']}, {e1['section']})",
-                            source_a=f"{e1['doc_title']} [p.{e1['page']}]",
-                            claim_b=f"'{e2['raw_statement']}' ({e2['doc_title']}, {e2['section']})",
-                            source_b=f"{e2['doc_title']} [p.{e2['page']}]",
+                            subject=f"Discrepancy: {e1['metric'].capitalize()} Standard",
+                            claim_a=f"{e1['raw_statement']}",
+                            source_a=f"{e1['doc_title']} (p.{e1['page']})",
+                            value_a=e1["display_val"],
+                            claim_b=f"{e2['raw_statement']}",
+                            source_b=f"{e2['doc_title']} (p.{e2['page']})",
+                            value_b=e2["display_val"],
+                            delta=delta_str,
+                            unit=e1["unit"] or e2["unit"],
+                            condition=f"{e1['doc_title']} vs {e2['doc_title']}",
                             discrepancy_type="quantitative",
                             severity="high",
-                            explanation=f"Different documents cite contrasting figures for {e1['metric']}: {e1['value']} vs {e2['value']}. This typically indicates differing revisions, testing conditions, or policy tiers."
+                            explanation=f"Contrasting values for {e1['metric']}: '{e1['display_val']}' in {e1['doc_title']} vs '{e2['display_val']}' in {e2['doc_title']}." + (f" Net difference: {delta_str}." if delta_str else "")
                         )
                         # Avoid duplicates
                         if not any(x.subject == c.subject and x.source_a == c.source_a and x.source_b == c.source_b for x in findings):
@@ -84,7 +148,6 @@ class ConflictRadar:
         findings = []
         keywords = ["eligible", "approved", "supersedes", "revoked", "replaced", "updated", "deprecated"]
         
-        # Check if citations mention version differences (e.g. 2023 vs 2025)
         doc_years = {}
         for c in citations:
             year = c.metadata.get("year")
@@ -100,19 +163,22 @@ class ConflictRadar:
             older_year, older_cit = sorted_docs[0]
             newer_year, newer_cit = sorted_docs[-1]
             if newer_year > older_year:
-                # Check for policy terms
                 has_policy_change = any(k in older_cit.snippet.lower() or k in newer_cit.snippet.lower() for k in keywords)
                 if has_policy_change:
                     findings.append(ConflictItem(
                         id=f"cnf_{uuid.uuid4().hex[:6]}",
-                        subject=f"Temporal Policy Evolution ({older_year} vs {newer_year})",
-                        claim_a=f"{older_cit.doc_title} ({older_year}) baseline regulations",
+                        subject=f"Policy Evolution ({older_year} -> {newer_year})",
+                        claim_a=f"{older_cit.doc_title} ({older_year}) baseline standard",
                         source_a=f"{older_cit.doc_title} ({older_year})",
-                        claim_b=f"{newer_cit.doc_title} ({newer_year}) updated terms",
+                        value_a=f"v{older_year}",
+                        claim_b=f"{newer_cit.doc_title} ({newer_year}) updated amendments",
                         source_b=f"{newer_cit.doc_title} ({newer_year})",
+                        value_b=f"v{newer_year}",
+                        delta=f"Amended in {newer_year}",
+                        condition="Version Revision",
                         discrepancy_type="policy_revision",
                         severity="medium",
-                        explanation=f"The newer {newer_year} document reflects amended rules or technical criteria that modify clauses in the {older_year} publication."
+                        explanation=f"The {newer_year} publication modifies and supersedes procedural clauses from the {older_year} framework."
                     ))
 
         return findings
@@ -136,14 +202,18 @@ class ConflictRadar:
                     if ca.doc_id != cb.doc_id:
                         findings.append(ConflictItem(
                             id=f"cnf_{uuid.uuid4().hex[:6]}",
-                            subject=f"Direct Rule Contradiction: '{word_a}' vs '{word_b}'",
-                            claim_a=f"Asserts condition is '{word_a}' in {ca.doc_title}",
+                            subject=f"Rule Contradiction: '{word_a}' vs '{word_b}'",
+                            claim_a=f"Condition specified as '{word_a}' in {ca.doc_title}",
                             source_a=f"{ca.doc_title} [{ca.section}]",
-                            claim_b=f"Asserts condition is '{word_b}' in {cb.doc_title}",
+                            value_a=word_a.upper(),
+                            claim_b=f"Condition specified as '{word_b}' in {cb.doc_title}",
                             source_b=f"{cb.doc_title} [{cb.section}]",
+                            value_b=word_b.upper(),
+                            delta="Direct Inversion",
+                            condition="Status Polar Discrepancy",
                             discrepancy_type="contradictory",
                             severity="high",
-                            explanation=f"One document treats the requirement as {word_a.upper()} while another treats it as {word_b.upper()}."
+                            explanation=f"One document defines the requirement as {word_a.upper()} while another treats it as {word_b.upper()}."
                         ))
 
         return findings
