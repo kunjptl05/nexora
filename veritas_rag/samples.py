@@ -117,7 +117,8 @@ def load_sample_datasets():
             "author": item["author"],
             "year": item["year"],
             "category": item["category"],
-            "source_type": "preloaded"
+            "source_type": "preloaded",
+            "file_size_bytes": len(item["content"].encode("utf-8"))
         }
         storage_service.add_document(item["id"], item["title"], meta, item["content"])
         chunks = chunker.chunk_document(item["id"], item["title"], item["content"], meta)
