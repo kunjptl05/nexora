@@ -209,29 +209,51 @@ class ConflictRadar:
             ("permitted", "forbidden"),
             ("deprecated", "supported")
         ]
+        generic_terms = {
+            "this", "that", "with", "from", "shall", "must", "will", "not",
+            "when", "then", "than", "they", "their", "these", "those",
+            "policy", "standard", "rule", "requirement", "document", "section"
+        }
 
         for word_a, word_b in polar_pairs:
-            matches_a = [c for c in citations if re.search(rf'\b{word_a}\b', c.snippet, re.IGNORECASE)]
-            matches_b = [c for c in citations if re.search(rf'\b{word_b}\b', c.snippet, re.IGNORECASE)]
+            matches_a = [
+                (citation, self._sentence_for_term(citation.snippet, word_a))
+                for citation in citations
+                if re.search(rf'\b{word_a}\b', citation.snippet, re.IGNORECASE)
+            ]
+            matches_b = [
+                (citation, self._sentence_for_term(citation.snippet, word_b))
+                for citation in citations
+                if re.search(rf'\b{word_b}\b', citation.snippet, re.IGNORECASE)
+            ]
 
-            for ca in matches_a:
-                for cb in matches_b:
-                    if ca.doc_id != cb.doc_id:
-                        findings.append(ConflictItem(
-                            id=f"cnf_{uuid.uuid4().hex[:6]}",
-                            subject=f"Rule Contradiction: '{word_a}' vs '{word_b}'",
-                            claim_a=f"Condition specified as '{word_a}' in {ca.doc_title}",
-                            source_a=f"{ca.doc_title} [{ca.section}]",
-                            value_a=word_a.upper(),
-                            claim_b=f"Condition specified as '{word_b}' in {cb.doc_title}",
-                            source_b=f"{cb.doc_title} [{cb.section}]",
-                            value_b=word_b.upper(),
-                            delta="Direct Inversion",
-                            condition="Status Polar Discrepancy",
-                            discrepancy_type="contradictory",
-                            severity="high",
-                            explanation=f"One document defines the requirement as {word_a.upper()} while another treats it as {word_b.upper()}."
-                        ))
+            for ca, sentence_a in matches_a:
+                for cb, sentence_b in matches_b:
+                    if ca.doc_id == cb.doc_id:
+                        continue
+                    anchors_a = set(re.findall(r'\b[a-z]{4,}\b', sentence_a.lower())) - generic_terms - {word_a, word_b}
+                    anchors_b = set(re.findall(r'\b[a-z]{4,}\b', sentence_b.lower())) - generic_terms - {word_a, word_b}
+                    if not anchors_a.intersection(anchors_b):
+                        continue
+
+                    findings.append(ConflictItem(
+                        id=f"cnf_{uuid.uuid4().hex[:6]}",
+                        subject=f"Possible rule difference: '{word_a}' vs '{word_b}'",
+                        claim_a=f"{sentence_a.strip()}",
+                        source_a=f"{ca.doc_title} [{ca.section}]",
+                        value_a=word_a.upper(),
+                        claim_b=f"{sentence_b.strip()}",
+                        source_b=f"{cb.doc_title} [{cb.section}]",
+                        value_b=word_b.upper(),
+                        delta="Review required",
+                        condition="Shared subject terms found in both passages",
+                        discrepancy_type="contradictory",
+                        severity="medium",
+                        explanation=(
+                            f"The passages use opposite terms ({word_a.upper()} and {word_b.upper()}) "
+                            "and share subject wording. Verify that their scope, date, and conditions match."
+                        )
+                    ))
 
         return findings
 
