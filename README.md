@@ -1,248 +1,89 @@
 # NEXORA
 
-NEXORA helps learners chat with their study materials, get simple evidence-backed explanations, create quizzes and flashcards, plan revisions, and identify topics to revisit. The starter library contains data structures and algorithms (DSA) notes and practice prompts. Citations link to the original uploaded file at its cited PDF page; webpage and text sources open in a readable source view.
+NEXORA is a study assistant that helps students learn from their own files. Students can upload notes and readings, ask questions across selected sources, review cited passages, see a summary for each file, and check selected materials for possible conflicts.
 
-Nexora helps users search across multiple documents, inspect source passages, and identify **potentially conflicting claims**. Answers include document references so users can verify the evidence themselves.
+## How it works
 
-> Nexora is a document analysis assistant, not an authoritative legal, regulatory, financial, or medical source. Always check the original documents before acting on a finding.
+1. **Add study materials.** Upload PDF, DOCX, TXT, or Markdown files, paste text, or provide a public webpage URL.
+2. **Extract and prepare the content.** The server extracts readable text, keeps page information where available, records document details, creates a short summary, and splits the content into searchable passages.
+3. **Index the passages.** NEXORA creates embeddings and stores passages in MongoDB Atlas when configured, or in its local persistent store for development.
+4. **Ask a question.** The server applies the selected document and metadata filters, searches passages using vector and lexical retrieval, and sends the most relevant evidence to the answer generator.
+5. **Review the answer.** Answers include citations. Selecting a citation opens the original file or source view, while the cited passage stays available for verification.
+6. **Study across files.** The Knowledge Base shows each file’s summary and a control to open the original. Conflict checks search selected materials and show retrieved evidence that may disagree.
+7. **Keep conversations separate.** Students can start and switch between conversations. Conversation history is saved in the current browser.
 
-## What it does
+## How it is made
 
-- **Document Q&A:** Ask questions over the indexed document collection.
-- **Evidence inspection:** Review retrieved passages, document names, sections, and page references.
-- **Conflict Radar:** Highlights possible differences in numerical claims, policy revisions, and selected rule wording across sources.
-- **Evidence-aware abstention:** Uses retrieval signals and query-term coverage to flag questions that appear unsupported by the indexed corpus.
-- **Retrieval trace:** Shows search mode, filters, candidate ranks, and timing information.
-- **Evaluation suite:** Runs a small sample set for retrieval, conflict-detection, abstention, and latency measurements.
-- **Report export:** Exports Markdown or JSON from a query result retained by the running server.
+- **Web app:** HTML, Tailwind CSS, and JavaScript in `static/`.
+- **Application server:** Python and FastAPI in `main.py`.
+- **Retrieval:** `veritas_rag/` extracts and chunks documents, builds embeddings, applies metadata and owner filters, and retrieves evidence using dense, lexical, or hybrid search.
+- **Answer generation:** Gemini can write source-grounded answers and file summaries when `GEMINI_API_KEY` is configured. Without it, NEXORA uses a local extractive fallback and locally generated file overviews.
+- **Storage:** MongoDB Atlas Vector Search is supported. A local persistent store is available for development without Atlas.
 
-## Grounded answer modes
+## Open NEXORA on your computer
 
-The Workspace offers two answer modes:
-
-- **Grounded:** produces a concise answer from retrieved passages, attaches inline citation numbers, and includes the matching original sentences with document, section, and page references.
-- **Exact source text:** returns relevant original sentences without paraphrasing.
-
-For list questions, Nexora is instructed to enumerate only items explicitly present in retrieved evidence and to identify when the source does not contain the requested detail.
-
-Gemini generation (when configured) receives strict source-only instructions; the local fallback extracts relevant source sentences. Retrieved source passages remain available in the Evidence Inspector.
-
-## Structured form-field lookup
-
-Before vector retrieval, Nexora detects common field-oriented questions (for example, "What is the name of the person in this document?") and searches values extracted from labelled form fields. It supports common labels such as candidate/applicant name, application ID, record ID, date of birth, email, phone, gender, category, university, institute, bank details, and family income.
-
-This path is deterministic: it returns the value following the matching label and cites the source line, document, and page. It handles multiple `Label: value` fields on one extracted PDF line and common page markers. Field lookups respect the current document scope and category/year filters. When the label/value is not present, Nexora falls back to normal document retrieval rather than fabricating a field value.
-
-The field extraction uses the text returned by PDF parsing. Scanned/image-only PDFs still require OCR before their text fields can be extracted; the current upload parser does not run OCR. Complex tables and visually aligned columns may also need a layout-aware parser.
-
-## Retrieval architecture
-
-Nexora supports three retrieval modes:
-
-| Mode | Behaviour |
-| --- | --- |
-| Dense | Vector similarity over the selected embedding model's output |
-| Lexical | BM25 lexical ranking in the local engine; Atlas Search's lexical text ranking when Atlas is enabled |
-| Hybrid | Reciprocal Rank Fusion (RRF) over dense and lexical rankings |
-
-The local lexical implementation uses BM25 term frequency, document frequency, and document-length normalization. Atlas retrieval modes are executed separately for the ablation comparison. If Atlas hybrid fusion is unavailable, the application falls back to the local hybrid engine rather than reporting a dense-only result as hybrid.
-
-The default hosted embedding model is `gemini-embedding-001`, with separate document/query retrieval task types. The local embedding fallback is a deterministic hashed-feature encoder; it allows zero-configuration development but is not equivalent to a trained semantic embedding model. Nexora now fails visibly rather than silently switching from a hosted vector space to the local 128-dimensional space after a provider error.
-
-**Embedding migration note:** the default hosted model change affects the vector space. Re-embed all existing chunks after changing the embedding model or dimensions. Do not mix embeddings from different models in one collection. Ensure the Atlas vector index dimension matches the configured embedding output (the default here is 768).
-
-## Conflict Radar: interpretation and limitations
-
-Conflict Radar uses rule-based extraction and matching to surface **candidate discrepancies**. It compares metric labels, topical domains, and normalized units before computing a numerical difference. Policy-revision signals are limited to explicit amendment/supersession language.
-
-This is a heuristic review aid, not a semantic proof that two statements contradict. Different conditions, populations, jurisdictions, dates, or measurement methods may explain different values. Confirm each finding against the cited source passages before treating it as a real conflict.
-
-## Demo data and benchmark honesty
-
-The repository seeds six **DSA learning notes** and a five-case labelled evaluation set. The notes cover complexity, arrays and hash maps, linear structures, trees and graphs, dynamic programming, and common complexity claims. They are practice material, not externally sourced references.
-
-Benchmark figures are not hard-coded as product claims. Run the evaluation suite in your own environment and report the test-set size, dataset, retrieval backend, embedding model, and measured results alongside any metrics. A five-case sample is useful for a smoke test, not evidence of general accuracy.
-
-## Requirements
-
-- Python 3.10 or newer
-- Optional: MongoDB Atlas with Vector Search and Search indexes configured
-- Optional: Gemini API key for hosted embeddings and answer generation
-
-Install the dependencies in a virtual environment:
-
-### Windows PowerShell
-
-```powershell
-cd "C:\path\to\nexora"
-python -m venv .venv
-& .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-If PowerShell blocks activation, run the app using the venv interpreter directly:
-
-```powershell
-./.venv/Scripts/python.exe -m pip install -r requirements.txt
-```
-
-## Configuration (optional)
-
-Set environment variables in the same PowerShell window before starting the server. Atlas retrieval requires Gemini embeddings; local development can use the local fallback without credentials.
-
-```powershell
-$env:GEMINI_API_KEY = "your-gemini-api-key"
-$env:MONGODB_URI = "mongodb+srv://..."
-$env:MONGODB_DB = "nexora_db"
-$env:MONGODB_COLLECTION = "knowledge_chunks"
-$env:MONGODB_VECTOR_INDEX = "vector_index"
-$env:NEXORA_OWNER_ID = "my-study-space"
-```
-
-Do not commit API keys, database credentials, uploaded files, or private document content.
-
-### MongoDB Atlas indexes
-
-Atlas retrieval uses Gemini `gemini-embedding-001` at 768 dimensions. Before connecting a collection that contains legacy 128-dimensional local vectors, configure `GEMINI_API_KEY`; connection/re-embedding safeguards must ensure all stored chunks are regenerated in the Gemini space before vector queries. Do not mix local hash vectors and Gemini vectors. The readiness endpoint reports both required Atlas indexes and query traces report whether Atlas actually executed or the local fallback answered.
-
-Create the vector index named `vector_index` on `embedding` (768 dimensions) with metadata filters:
-
-```json
-{
-  "fields": [
-    { "type": "vector", "path": "embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "metadata.category" },
-    { "type": "filter", "path": "metadata.year" },
-    { "type": "filter", "path": "metadata.uploaded_at" },
-    { "type": "filter", "path": "metadata.content_type" },
-    { "type": "filter", "path": "metadata.owner_id" },
-    { "type": "filter", "path": "doc_id" }
-  ]
-}
-```
-
-Create a separate Atlas Search index named `chunk_text` for hybrid lexical retrieval. Map `content`, `doc_title`, and `section` as strings and `metadata.owner_id`, `metadata.content_type`, `metadata.uploaded_at`, `metadata.category`, `metadata.year`, and `doc_id` as filter fields. Both `vector_index` and `chunk_text` must report `READY` before Atlas retrieval is considered ready. `GET /api/status` reports each index state. Atlas indexes are provisioned in Atlas; the app does not create them automatically.
-
-Example Atlas Search index definition for `chunk_text`:
-
-```json
-{
-  "mappings": {
-    "dynamic": false,
-    "fields": {
-      "content": { "type": "string" },
-      "doc_title": { "type": "string" },
-      "section": { "type": "string" },
-      "doc_id": { "type": "token" },
-      "metadata": {
-        "type": "document",
-        "fields": {
-          "category": { "type": "token" },
-          "year": { "type": "number" },
-          "uploaded_at": { "type": "number" },
-          "content_type": { "type": "token" },
-          "owner_id": { "type": "token" }
-        }
-      }
-    }
-  }
-}
-```
-
-Metadata filters include upload date bounds, content type, category, year, and document IDs. The `owner_id` supplied in request JSON is ignored: each deployment scopes reads, search, citation source access, and deletes to its server-configured `NEXORA_OWNER_ID`. This is deployment-level single-owner isolation, not user authentication. Do not expose a shared deployment to multiple users until authenticated identities and per-user authorization are added.
-
-Uploads accept PDF, DOCX, TXT, Markdown, or a public webpage URL. Webpage ingestion rejects local/private IP addresses and redirects, and limits fetched content to 5 MB. Uploaded source files are stored in `data/sources`; keep this directory private and backed up with the local store.
-
-Nexora stores document-level raw text and extracted field values in the Atlas `documents` collection, and source lines generated by direct field lookup in `field_extractions`. Keep both collections access-controlled because they may contain personal information from uploaded forms. Resetting or deleting a document removes the corresponding field evidence records.
-
-## Run locally
-
-The Windows launcher creates the `.venv` environment when needed, checks/installs the requirements, and starts the local FastAPI server:
+Install Python 3.10 or newer, download or clone this repository, then open PowerShell in the project folder (the folder containing `run.bat`). Start the app:
 
 ```powershell
 .\run.bat
 ```
 
-Or start Uvicorn directly:
+The launcher creates the virtual environment and installs the project requirements the first time it runs. Keep that terminal open while using NEXORA. When the server reports that it is running, open **http://127.0.0.1:8000** in your browser. To stop the app, return to the terminal and press `Ctrl+C`.
+
+If you prefer to start it manually:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+python -m venv .venv
+& .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Open:
+If the address does not open, check that the terminal still shows the server running and that port `8000` is available. The server listens only on this computer by default.
 
-- App: http://127.0.0.1:8000
-- API documentation: http://127.0.0.1:8000/docs
-- Health/status: http://127.0.0.1:8000/api/status
+To enable Gemini answers and AI-written file summaries, set an API key before starting the app:
 
-The server binds to loopback by default for local development. Do not expose it to a public network without adding authentication/authorization, rate limiting, secure secret management, and production-grade upload and storage controls.
+```powershell
+$env:GEMINI_API_KEY = "your-gemini-api-key"
+.\run.bat
+```
 
-## Local data
+For Atlas retrieval, configure `MONGODB_URI`, `MONGODB_DB`, `MONGODB_COLLECTION`, and `MONGODB_VECTOR_INDEX`. Use Gemini embeddings at 768 dimensions and configure both Atlas indexes before retrieval:
 
-The local fallback persists its document metadata and chunk content in `data_store.json`. This file may contain private uploaded text. Keep it local and out of version control. It is not a substitute for a managed, access-controlled database or a backup strategy.
+- `vector_index` for vector search and metadata filters.
+- `chunk_text` for lexical search over chunk text.
 
-## Automated tests
+Both indexes must be ready, and stored embeddings must match the configured Gemini model and dimensions. `GET /api/status` reports connection and index readiness. The local store is used when Atlas is not configured.
 
-Run the unit tests locally with:
+## Project workflow
+
+```text
+Student files
+    ↓
+Text extraction and page tracking
+    ↓
+Document summary + searchable chunks
+    ↓
+Embedding and local or Atlas storage
+    ↓
+Question + selected files and filters
+    ↓
+Vector / lexical retrieval
+    ↓
+Grounded answer with citations and original-source access
+```
+
+## Important behavior
+
+- Search, summaries, source access, and deletion are scoped by the server-configured `NEXORA_OWNER_ID`.
+- PDF citations preserve page references. Scanned PDFs without extractable text require OCR, which is not included.
+- Local fallback answers quote relevant source sentences; Gemini is needed for fluent paraphrasing and generated summaries.
+- Conflict checks highlight possible differences for review; they do not prove that sources contradict each other.
+- Conversation history is browser-local and does not sync between devices.
+
+## Tests
 
 ```powershell
 python -m compileall -q main.py veritas_rag tests
 python -m unittest discover -s tests -v
-```
-
-The same checks run in GitHub Actions on pushes to `main` / `nexora/**` and pull requests into `main`.
-
-## Evaluation
-
-Use the **Benchmark & Ablation** screen or send:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/eval/run
-```
-
-The evaluation response reports expected and retrieved source IDs per case. The labelled set includes three-document synthesis, distant-section retrieval, conflicting complexity claims, a single-source question, and an unanswerable query. The seeded notes are for practice and smoke testing; add your own representative collection before presenting results as real-world performance.
-
-## Known limitations
-
-- Conflict detection is heuristic and may produce false positives or miss paraphrased contradictions.
-- The local feature-hash embedding fallback is not a learned semantic model.
-- Abstention relies on query-term coverage rather than a trained reranker or calibrated relevance classifier; it does not guarantee that every unsupported answer will be rejected.
-- Form-field extraction is label-based and only works when the PDF parser can extract readable text; scanned forms and complex layouts may require OCR or a layout-aware parser.
-- Comparative retrieval currently balances the number of passages returned per document for obvious comparison queries; it is not a full Maximal Marginal Relevance (MMR) reranker.
-- Atlas metadata and extracted-field records are loaded from the separate `documents` collection; older deployments may need to re-upload documents or migrate records if that collection was never populated.
-- Query-result report exports are held in the running process's bounded in-memory cache. Re-run a query after restarting the server before exporting its report.
-- Authentication and role-based access control are not yet implemented. Keep the server local and do not deploy it as a public multi-user service in its current form.
-- Study quiz, flashcard, revision-plan, and knowledge-gap requests use the same evidence-grounded chat workflow; they are not persistent learner progress or adaptive spaced-repetition features.
-
-## Before production
-
-1. Add authentication, role-based authorization, and tenant isolation.
-2. Add upload content-type validation, malware scanning, size limits, and per-user quotas.
-3. Persist query history and report metadata securely.
-4. Add a layout-aware parser/OCR pipeline for scanned forms and complex PDF tables.
-5. Add a trained reranker and calibrated abstention evaluation; current query-term coverage is a heuristic.
-6. Expand labelled automated tests for retrieval mode parity, conflicts, abstention, report export, and embedding dimension changes.
-7. Evaluate on a larger, independently labelled dataset and publish reproducible benchmark methodology.
-
-## Project layout
-
-```text
-.
-├── main.py
-├── run.bat
-├── static/
-│   ├── index.html
-│   └── app.js
-└── veritas_rag/
-    ├── chunker.py
-    ├── config.py
-    ├── conflict_radar.py
-    ├── embeddings.py
-    ├── evaluator.py
-    ├── field_extractor.py
-    ├── generator.py
-    ├── models.py
-    ├── samples.py
-    └── storage.py
 ```
