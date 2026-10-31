@@ -14,6 +14,17 @@ Nexora helps users search across multiple documents, inspect source passages, an
 - **Evaluation suite:** Runs a small sample set for retrieval, conflict-detection, abstention, and latency measurements.
 - **Report export:** Exports Markdown or JSON from a query result retained by the running server.
 
+## Grounded answer modes
+
+The Workspace offers two answer modes:
+
+- **Grounded:** produces a concise answer from retrieved passages, attaches inline citation numbers, and includes the matching original sentences with document, section, and page references.
+- **Exact source text:** returns relevant original sentences without paraphrasing.
+
+For list and component questions, Nexora is instructed to enumerate only items explicitly present in retrieved evidence. It distinguishes battery chemistries from physical cell components. If a document names a chemistry but does not describe internal parts, Nexora says the component breakdown is not present instead of filling the gap with a generic list.
+
+The local structured path handles battery component questions deterministically to avoid unsupported completion. For other questions, Gemini generation (when configured) receives strict source-only instructions; the local fallback extracts relevant source sentences. Retrieved source passages remain available in the Evidence Inspector.
+
 ## Retrieval architecture
 
 Nexora supports three retrieval modes:
