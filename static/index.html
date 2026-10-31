@@ -29,6 +29,108 @@
       background: rgba(15, 62, 51, 0.4);
       backdrop-filter: blur(4px);
     }
+
+    /* Resizable three-panel workspace */
+    #tab-chat.workspace-grid {
+      --documents-width: 260px;
+      --workspace-width: 1fr;
+      --evidence-width: 360px;
+      display: grid;
+      grid-template-columns:
+        minmax(0, var(--documents-width))
+        7px
+        minmax(0, var(--workspace-width))
+        7px
+        minmax(0, var(--evidence-width));
+      position: relative;
+      width: 100%;
+    }
+    #tab-chat .workspace-panel {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    #tab-chat .workspace-panel.is-collapsed {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .panel-resizer {
+      position: relative;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 7px;
+      cursor: col-resize;
+      touch-action: none;
+      background: #F1F5F3;
+      border-left: 1px solid #E2E8F0;
+      border-right: 1px solid #E2E8F0;
+      outline: none;
+    }
+    .panel-resizer:hover,
+    .panel-resizer:focus-visible,
+    body.panel-resizing .panel-resizer {
+      background: #DCEBE4;
+    }
+    .panel-resizer span {
+      display: block;
+      width: 3px;
+      height: 34px;
+      border-radius: 999px;
+      background: #A7BDB2;
+    }
+    .panel-resizer.is-hidden { display: none; }
+    body.panel-resizing,
+    body.panel-resizing * { cursor: col-resize !important; user-select: none !important; }
+    .panel-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 28px;
+      height: 28px;
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      color: #47665B;
+      background: #FFFFFF;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .panel-toggle:hover {
+      background: #F0FDF4;
+      border-color: #A7D8BC;
+      color: #0F3E33;
+    }
+    .panel-restore {
+      position: absolute;
+      z-index: 25;
+      top: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 54px;
+      border: 1px solid #CFE1D7;
+      background: rgba(255,255,255,.96);
+      color: #0F3E33;
+      box-shadow: 0 3px 12px rgba(15,62,51,.12);
+      transform: translateY(-50%);
+    }
+    .panel-restore.is-visible { display: flex; }
+    .panel-restore:hover { background: #ECFDF3; }
+    .panel-restore-left { left: 0; border-radius: 0 10px 10px 0; }
+    .panel-restore-right { right: 0; border-radius: 10px 0 0 10px; }
+    .panel-restore-center { left: 50%; border-radius: 10px; transform: translate(-50%, -50%); }
+    @media (max-width: 900px) {
+      #tab-chat.workspace-grid {
+        --documents-width: 220px;
+        --evidence-width: 300px;
+      }
+    }
+    @media (max-width: 680px) {
+      #tab-chat.workspace-grid { --documents-width: 190px; --evidence-width: 0px; }
+      #panel-evidence { visibility: hidden; pointer-events: none; }
+    }
   </style>
 </head>
 <body class="h-full flex overflow-hidden bg-[#F7F9F8] text-stone-900 select-none">
@@ -139,8 +241,6 @@
           <i data-lucide="message-square" class="w-4 h-4 text-emerald-700"></i>
           <span>Workspace · Cross-Document Intelligence</span>
         </h2>
-        <span class="text-stone-300">|</span>
-        <span id="currentViewSubtext" class="text-xs text-stone-500 font-medium">3-Panel Synthesis, Traceability & Conflict Radar</span>
       </div>
 
       <div class="flex items-center gap-3">
@@ -168,17 +268,22 @@
     <main class="flex-1 overflow-hidden relative">
 
       <!-- ==================== TAB 1: 3-PANEL CHAT WORKSPACE ==================== -->
-      <section id="tab-chat" class="h-full flex overflow-hidden">
+      <section id="tab-chat" class="h-full overflow-hidden workspace-grid">
         
         <!-- PANEL A: Document Scope / Collection (Left, ~250px) -->
-        <aside class="w-64 h-full bg-[#F3F6F4] border-r border-stone-200 flex flex-col shrink-0">
-          <div class="p-3 border-b border-stone-200 bg-white flex items-center justify-between">
-            <span class="text-xs font-extrabold text-stone-900 flex items-center gap-1.5">
+        <aside id="panel-documents" class="workspace-panel h-full bg-[#F3F6F4] border-r border-stone-200 flex flex-col">
+          <div class="p-3 border-b border-stone-200 bg-white flex items-center justify-between gap-2">
+            <span class="text-xs font-extrabold text-stone-900 flex items-center gap-1.5 min-w-0">
               <i data-lucide="files" class="w-3.5 h-3.5 text-emerald-700"></i>
               <span>Indexed Documents</span>
               <span id="scopeDocBadge" class="px-1.5 py-0.2 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-800 border border-emerald-200">5</span>
             </span>
-            <button onclick="toggleAllScope()" id="btnSelectAllScope" class="text-[10px] font-bold text-[#E07A5F] hover:text-[#D0694E]">All</button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="toggleAllScope()" id="btnSelectAllScope" class="text-[10px] font-bold text-[#E07A5F] hover:text-[#D0694E]">All</button>
+              <button type="button" class="panel-toggle" onclick="toggleWorkspacePanel('documents')" title="Close Indexed Documents" aria-label="Close Indexed Documents">
+                <i data-lucide="panel-left-close" class="w-4 h-4"></i>
+              </button>
+            </div>
           </div>
 
           <!-- Document Search in Scope -->
@@ -202,8 +307,10 @@
           </div>
         </aside>
 
-        <!-- PANEL B: AI Synthesis Conversation (Center, flex-1) -->
-        <div class="flex-1 flex flex-col h-full bg-[#F7F9F8] overflow-hidden">
+        <div id="resize-documents" class="panel-resizer" role="separator" aria-label="Resize Indexed Documents panel" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="520" tabindex="0" data-resize="documents"><span></span></div>
+
+        <!-- PANEL B: Conversation -->
+        <div id="panel-chat" class="workspace-panel flex flex-col h-full bg-[#F7F9F8] overflow-hidden">
           
           <!-- Quick Demonstration Prompt Pills -->
           <div class="px-5 py-2.5 border-b border-stone-200/80 bg-white shrink-0 flex items-center gap-2 overflow-x-auto text-xs custom-scrollbar">
@@ -226,60 +333,14 @@
                     class="px-3 py-1 rounded-full bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-semibold shrink-0 transition-all shadow-2xs flex items-center gap-1.5 text-[11px]">
               <span>⚡ Architecture RCA</span>
             </button>
+            <button type="button" class="panel-toggle ml-auto sticky right-0" onclick="toggleWorkspacePanel('chat')" title="Close Conversation" aria-label="Close Conversation">
+              <i data-lucide="panel-top-close" class="w-4 h-4"></i>
+            </button>
           </div>
 
           <!-- Messages Stream -->
-          <div id="chatStream" class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
-            <!-- Welcome Presentation Card -->
-            <div class="forest-surface rounded-2xl p-6 shadow-xs max-w-4xl mx-auto">
-              <div class="flex items-start gap-4">
-                <div class="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-800">
-                  <i data-lucide="shield-check" class="w-6 h-6"></i>
-                </div>
-                <div class="flex-1">
-                  <div class="flex items-center justify-between mb-1">
-                    <h2 class="text-base font-extrabold text-[#0F3E33]">Welcome to Nexora</h2>
-                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold text-[10px] border border-emerald-200">Document Intelligence Platform</span>
-                  </div>
-                  <p class="text-xs text-stone-600 leading-relaxed mb-4">
-                    Nexora helps you search across multiple documents, compare potentially conflicting claims, and trace answers back to the passages that support them. When the indexed sources do not provide enough evidence, Nexora flags the limitation instead of presenting an unsupported answer.
-                  </p>
-                  
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
-                    <div class="p-3.5 rounded-xl bg-[#F7F9F8] border border-stone-200">
-                      <div class="font-bold text-[#0F3E33] mb-1 flex items-center gap-1.5">
-                        <i data-lucide="git-compare" class="w-4 h-4 text-[#E07A5F]"></i> Conflict Radar
-                      </div>
-                      <p class="text-[11px] text-stone-500 leading-normal">Highlights potentially conflicting values and policy statements across sources, with passages to help you verify the differences.</p>
-                    </div>
-                    <div class="p-3.5 rounded-xl bg-[#F7F9F8] border border-stone-200">
-                      <div class="font-bold text-[#0F3E33] mb-1 flex items-center gap-1.5">
-                        <i data-lucide="link" class="w-4 h-4 text-emerald-700"></i> Clickable Citations
-                      </div>
-                      <p class="text-[11px] text-stone-500 leading-normal">Inspect retrieved source passages, document names and page references used to support an answer.</p>
-                    </div>
-                    <div class="p-3.5 rounded-xl bg-[#F7F9F8] border border-stone-200">
-                      <div class="font-bold text-[#0F3E33] mb-1 flex items-center gap-1.5">
-                        <i data-lucide="shield-alert" class="w-4 h-4 text-[#E07A5F]"></i> Safe Abstention
-                      </div>
-                      <p class="text-[11px] text-stone-500 leading-normal">Flags questions that lack sufficient support in the indexed documents and explains the evidence gap.</p>
-                    </div>
-                  </div>
-
-                  <div class="mt-4 flex items-center gap-3 pt-2">
-                    <button onclick="runSamplePrompt('Compare solar panel efficiency, warranty period, and financial subsidies between the 2023 framework and the 2025 Modernization Act.')" 
-                            class="px-4 py-2 bg-[#E07A5F] hover:bg-[#D0694E] text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all">
-                      <i data-lucide="play" class="w-3.5 h-3.5"></i>
-                      <span>Run Multi-Source Conflict Demo</span>
-                    </button>
-                    <button onclick="switchTab('conflict')" class="px-3.5 py-2 bg-white hover:bg-stone-50 text-[#0F3E33] font-bold rounded-xl text-xs flex items-center gap-1.5 border border-stone-200 shadow-2xs">
-                      <i data-lucide="git-compare" class="w-3.5 h-3.5 text-emerald-700"></i>
-                      <span>Open Conflict Intelligence Dashboard</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div id="chatStream" class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5" aria-live="polite">
+            <!-- Conversation messages appear here after the first query. -->
           </div>
 
           <!-- Bottom Query Box -->
@@ -319,14 +380,21 @@
           </div>
         </div>
 
-        <!-- PANEL C: Source Evidence & Citations Inspector (Right, ~340px) -->
-        <aside class="w-80 h-full bg-white border-l border-stone-200 flex flex-col shrink-0">
+        <div id="resize-evidence" class="panel-resizer" role="separator" aria-label="Resize Evidence Inspector panel" aria-orientation="vertical" aria-valuemin="240" aria-valuemax="560" tabindex="0" data-resize="evidence"><span></span></div>
+
+        <!-- PANEL C: Evidence Inspector -->
+        <aside id="panel-evidence" class="workspace-panel h-full bg-white border-l border-stone-200 flex flex-col">
           <div class="p-3.5 border-b border-stone-200 flex items-center justify-between bg-white">
             <div class="flex items-center gap-2">
               <i data-lucide="quote" class="w-4 h-4 text-emerald-700"></i>
               <span class="text-xs font-extrabold text-stone-900">Evidence Inspector</span>
             </div>
-            <span id="evidenceCountBadge" class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">0 Citations</span>
+            <div class="flex items-center gap-1.5">
+              <span id="evidenceCountBadge" class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">0 Citations</span>
+              <button type="button" class="panel-toggle" onclick="toggleWorkspacePanel('evidence')" title="Close Evidence Inspector" aria-label="Close Evidence Inspector">
+                <i data-lucide="panel-right-close" class="w-4 h-4"></i>
+              </button>
+            </div>
           </div>
 
           <!-- Active Passage Detailed View / Citation Feed -->
@@ -343,6 +411,15 @@
           </div>
         </aside>
 
+        <button id="restore-documents" type="button" class="panel-restore panel-restore-left" onclick="toggleWorkspacePanel('documents')" title="Show Indexed Documents" aria-label="Show Indexed Documents">
+          <i data-lucide="panel-left-open" class="w-4 h-4"></i>
+        </button>
+        <button id="restore-chat" type="button" class="panel-restore panel-restore-center" onclick="toggleWorkspacePanel('chat')" title="Show Conversation" aria-label="Show Conversation">
+          <i data-lucide="panel-top-open" class="w-4 h-4"></i>
+        </button>
+        <button id="restore-evidence" type="button" class="panel-restore panel-restore-right" onclick="toggleWorkspacePanel('evidence')" title="Show Evidence Inspector" aria-label="Show Evidence Inspector">
+          <i data-lucide="panel-right-open" class="w-4 h-4"></i>
+        </button>
       </section>
 
       <!-- ==================== TAB 2: KNOWLEDGE BASE ==================== -->
