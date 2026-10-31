@@ -98,6 +98,65 @@ class GroundedGenerator:
             generation_mode=generation_mode
         )
 
+    def generate_field_response(
+        self,
+        question: str,
+        field_matches: List[Dict[str, Any]],
+        explain_search: Optional[Dict[str, Any]] = None,
+        answer_mode: str = "grounded"
+    ) -> QueryResponse:
+        """Create a deterministic answer from exact label:value matches in uploaded documents."""
+        mode = "exact" if str(answer_mode).lower() == "exact" else "grounded"
+        citations: List[Citation] = []
+        seen = set()
+        for match in field_matches:
+            citation = match.get("citation")
+            if citation and citation.id not in seen:
+                citations.append(citation)
+                seen.add(citation.id)
+
+        if mode == "exact":
+            lines = ["**Exact field value from your document**"]
+            for index, match in enumerate(field_matches, start=1):
+                citation = match["citation"]
+                lines.append(f"> {match['source_line']} [{index}]")
+                lines.append(f"> Source: {match['doc_title']}, p.{match['page_number']}")
+        else:
+            if len(field_matches) == 1:
+                match = field_matches[0]
+                label = str(match.get("label", "Field")).strip().lower()
+                if match.get("field_key") == "candidate_name":
+                    answer_line = f"The name recorded in the document is **{match['value']}** [1]."
+                else:
+                    answer_line = f"The document lists **{label}** as **{match['value']}** [1]."
+                lines = [answer_line]
+            else:
+                lines = [f"I found {len(field_matches)} matching field values in the selected documents:"]
+                for index, match in enumerate(field_matches, start=1):
+                    label = str(match.get("label", "Field")).strip()
+                    lines.append(f"- **{label}:** {match['value']} [{index}]")
+                lines.append("")
+                lines.append("Each value is taken directly from its document label.")
+
+        lines.extend(["", "**Verbatim evidence from your documents**"])
+        for index, match in enumerate(field_matches, start=1):
+            lines.append(f"> {match['source_line']} [{index}]")
+            lines.append(f"> Source: {match['doc_title']}, p.{match['page_number']}")
+
+        return QueryResponse(
+            question=question,
+            answer="\n".join(lines),
+            answer_mode=mode,
+            abstained=False,
+            abstention_reason=None,
+            citations=citations,
+            conflicts=[],
+            groundedness_score=100.0,
+            latency_ms=0.0,
+            explain_search=explain_search or {"retrieval_mode": "structured_field_lookup", "field_matches": len(field_matches)},
+            generation_mode="structured-field-extraction"
+        )
+
     def _check_abstention(
         self, question: str, citations: List[Citation]
     ) -> Tuple[bool, str, List[Citation]]:
