@@ -50,9 +50,17 @@ _LABEL_PATTERN = re.compile(
 
 _FIELD_INTENTS = [
     ("application_id", re.compile(r"\bapplication\s*(?:id|number|no\.?)\b", re.I)),
+    ("record_id", re.compile(r"\b(candidate\s+id|student\s+id|record\s+id|id\s+number)\b", re.I)),
     ("date_of_birth", re.compile(r"\b(date\s+of\s+birth|birth\s+date|dob)\b", re.I)),
+    ("aadhaar_number", re.compile(r"\b(aadhaar|aadhar)(?:\s+card)?(?:\s+number|\s+no\.?)\b", re.I)),
     ("email", re.compile(r"\b(e-?mail(?:\s+address)?)\b", re.I)),
     ("mobile", re.compile(r"\b(mobile|phone|contact\s+number)\b", re.I)),
+    ("bank_name", re.compile(r"\bbank\s+name\b", re.I)),
+    ("bank_branch", re.compile(r"\b(bank\s+branch|branch\s+name)\b", re.I)),
+    ("ifsc_code", re.compile(r"\bifsc\s+code\b", re.I)),
+    ("bank_account", re.compile(r"\b(bank\s+account|savings\s+account)\s+(?:number|no\.?)\b", re.I)),
+    ("ration_card_number", re.compile(r"\bration\s+card\s+(?:number|no\.?)\b", re.I)),
+    ("bpl_card_number", re.compile(r"\bbpl\s+card\s+(?:number|no\.?)\b", re.I)),
     ("father_name", re.compile(r"\b(father(?:'s)?|parent)\s+name\b", re.I)),
     ("gender", re.compile(r"\bgender\b", re.I)),
     ("category", re.compile(r"\b(category|caste)\b", re.I)),
