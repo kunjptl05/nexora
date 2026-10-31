@@ -1,6 +1,6 @@
 import re
 import time
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from veritas_rag.models import Citation, ConflictItem, QueryResponse
 from veritas_rag.config import config
 from veritas_rag.conflict_radar import conflict_radar
@@ -20,12 +20,6 @@ class GroundedGenerator:
         "lithium", "sodium", "lfp", "anode", "cathode", "electrolyte",
         "separator", "electrode", "electrodes", "module", "pack"
     }
-    _BATTERY_PART_TERMS = {
-        "anode", "cathode", "electrolyte", "separator", "electrode",
-        "electrodes", "current collector", "battery management system",
-        "bms", "thermal management", "casing", "enclosure"
-    }
-
     def __init__(self):
         pass  # Read config.gemini_api_key at call time — single source of truth
 
@@ -230,7 +224,8 @@ class GroundedGenerator:
         # For battery component questions, deterministic extraction prevents the model
         # from filling a source gap with a generic textbook component list.
         retrieved_text = " ".join(citation.snippet.lower() for citation in citations)
-        is_battery_context = any(term in retrieved_text for term in self._BATTERY_TERMS)
+        retrieved_tokens = set(re.findall(r"\b[a-z0-9+-]+\b", retrieved_text))
+        is_battery_context = bool(retrieved_tokens & self._BATTERY_TERMS)
         if self._is_component_question(question) and is_battery_context:
             return self._local_grounded_synthesis(question, citations, conflicts), "local-grounded-structured"
 
@@ -341,7 +336,8 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
 
         lines: List[str] = []
         retrieved_text = " ".join(citation.snippet.lower() for citation in citations)
-        is_battery_context = any(term in retrieved_text for term in self._BATTERY_TERMS)
+        retrieved_tokens = set(re.findall(r"\b[a-z0-9+-]+\b", retrieved_text))
+        is_battery_context = bool(retrieved_tokens & self._BATTERY_TERMS)
         if self._is_component_question(question) and is_battery_context:
             chemistries = self._extract_battery_chemistries(selected)
             physical_part_patterns = [
