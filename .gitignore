@@ -23,6 +23,7 @@ Thumbs.db
 
 # Local document content and runtime state (may contain private uploads)
 data_store.json
+data/sources/
 uploads/
 reports/
 *.sqlite
@@ -31,3 +32,4 @@ reports/
 # Environment files (keep examples only)
 .env.*
 !.env.example
+data/sources/

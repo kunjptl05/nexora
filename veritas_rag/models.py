@@ -40,6 +40,10 @@ class SearchFilters(BaseModel):
     min_year: Optional[int] = None
     max_year: Optional[int] = None
     doc_ids: Optional[List[str]] = None
+    upload_after: Optional[float] = None
+    upload_before: Optional[float] = None
+    content_type: Optional[str] = None
+    owner_id: Optional[str] = None
 
 class Citation(BaseModel):
     id: str
@@ -87,6 +91,12 @@ class QueryRequest(BaseModel):
     answer_mode: Literal["grounded", "exact"] = "grounded"
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
+class StudyKitRequest(BaseModel):
+    kind: Literal["quiz", "flashcards", "revision"]
+    topic: str = ""
+    filters: Optional[SearchFilters] = None
+    count: int = Field(default=5, ge=1, le=12)
+
 class QueryResponse(BaseModel):
     query_id: str = Field(default_factory=lambda: f"qry_{uuid.uuid4().hex[:8]}")
     question: str
@@ -108,6 +118,7 @@ class EvalTestCase(BaseModel):
     expected_conflict: bool = False
     expected_abstention: bool = False
     category: str
+    expected_doc_ids: List[str] = Field(default_factory=list)
 
 class EvalMetricResult(BaseModel):
     test_id: str
@@ -117,6 +128,8 @@ class EvalMetricResult(BaseModel):
     precision_at_k: float
     retrieved_titles: List[str]
     expected_titles: List[str]
+    retrieved_doc_ids: List[str] = Field(default_factory=list)
+    expected_doc_ids: List[str] = Field(default_factory=list)
     conflict_detected: bool
     expected_conflict: bool
     abstained: bool

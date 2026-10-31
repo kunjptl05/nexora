@@ -2,9 +2,11 @@ import os
 from pydantic import BaseModel
 
 class AppConfig(BaseModel):
-    app_name: str = "Nexora"
-    tagline: str = "Document Intelligence & Cross-Verification Platform"
-    version: str = "2.0.0"
+    app_name: str = "NEXORA Study Buddy"
+    tagline: str = "Your study space for understanding, practice, and revision"
+    version: str = "1.0.0"
+    owner_id: str = os.getenv("NEXORA_OWNER_ID", "local-owner")
+    gemini_embedding_dimensions: int = 768
     
     # Cloud Database Settings
     mongodb_uri: str = os.getenv("MONGODB_URI", "")

@@ -2,12 +2,18 @@ import os
 import time
 import re
 import hashlib
+import ipaddress
+import socket
+import io
+import html
+import copy
+from pathlib import Path
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -15,7 +21,7 @@ from veritas_rag.config import config
 from veritas_rag.models import (
     QueryRequest, QueryResponse, DocumentChunk, 
     SearchFilters, EvalSummary, ReportExportRequest,
-    CustomEvalRequest
+    CustomEvalRequest, StudyKitRequest
 )
 from veritas_rag.storage import storage_service
 from veritas_rag.embeddings import embedding_service
@@ -60,9 +66,10 @@ def get_status():
         "app_name": config.app_name,
         "tagline": config.tagline,
         "version": config.version,
-        "mongodb_headline": "MongoDB Atlas Vector Search: connected" if storage_service.is_connected else "Local Vector + BM25 (Persistent Local Store)",
+        "mongodb_headline": "MongoDB Atlas Vector Search: ready" if storage_service.atlas_index_readiness()["ready"] else ("MongoDB Atlas connected; search indexes not ready" if storage_service.is_connected else "Local Vector + BM25 (Persistent Local Store)"),
         "storage_mode": storage_service.active_mode,
         "mongodb_connected": storage_service.is_connected,
+        "atlas_indexes": storage_service.atlas_index_readiness(),
         "mongodb_database": config.mongodb_database,
         "mongodb_collection": config.mongodb_collection,
         "vector_index_name": config.vector_index_name,
@@ -97,10 +104,15 @@ def update_mongodb(data: dict):
 @app.post("/api/config/gemini")
 def update_gemini_key(data: dict):
     key = data.get("api_key", "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="A Gemini API key is required for Gemini embeddings.")
     config.gemini_api_key = key
     embedding_service.configure_key(key)
     generator._api_key = key
-    re_embedded = storage_service.re_embed_all_chunks()
+    try:
+        re_embedded = storage_service.re_embed_all_chunks()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Gemini key saved but re-embedding did not complete: {exc}")
     return {
         "success": True, 
         "configured": bool(key), 
@@ -111,36 +123,106 @@ def update_gemini_key(data: dict):
 # 3. Document Knowledge Base
 @app.get("/api/documents")
 def list_documents():
-    return storage_service.list_documents()
+    docs = [copy.deepcopy(d) for d in storage_service.list_documents() if (d.get("metadata") or {}).get("owner_id") == config.owner_id]
+    for doc in docs:
+        doc.get("metadata", {}).pop("source_file", None)
+    return docs
+
+def remove_source_file(record: dict) -> None:
+    source = (record.get("metadata") or {}).get("source_file")
+    if not source:
+        return
+    source_root = (Path(__file__).parent / "data" / "sources").resolve()
+    source_path = Path(source).resolve()
+    if source_path.is_relative_to(source_root) and source_path.is_file():
+        source_path.unlink()
 
 @app.post("/api/documents/upload")
 def upload_document(
-    title: str = Form(...),
+    title: str = Form(""),
     category: str = Form("General"),
     author: str = Form("Unknown"),
     year: Optional[int] = Form(None),
     text_content: Optional[str] = Form(None),
+    url: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None)
 ):
     content = ""
     pages_data = None
     file_bytes = b""
 
+    source_path = None
+    content_type = "text/plain"
+    source_url = None
     if file and file.filename:
         file_bytes = file.file.read()
         if len(file_bytes) > 25 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="File exceeds maximum allowed upload limit of 25MB.")
         filename_lower = file.filename.lower()
+        content_type = "application/pdf" if filename_lower.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if filename_lower.endswith(".docx") else "text/plain"
         if filename_lower.endswith(".pdf"):
             try:
                 content, pages_data = chunker.extract_text_from_pdf(file_bytes)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {str(e)}")
-        else:
+        elif filename_lower.endswith(".docx"):
+            try:
+                from docx import Document
+                document = Document(io.BytesIO(file_bytes))
+                content = "\n\n".join(p.text for p in document.paragraphs if p.text.strip())
+                content += "\n\n" + "\n".join(" | ".join(cell.text for cell in row.cells) for table in document.tables for row in table.rows)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to parse DOCX: {str(e)}")
+        elif filename_lower.endswith((".txt", ".md", ".markdown")):
             try:
                 content = file_bytes.decode("utf-8")
             except UnicodeDecodeError:
                 content = file_bytes.decode("latin-1", errors="ignore")
+        else:
+            raise HTTPException(status_code=400, detail="Supported file types are PDF, DOCX, TXT, and Markdown.")
+    elif url:
+        from urllib.parse import urlparse
+        import urllib.request
+        import html
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise HTTPException(status_code=400, detail="Provide a valid HTTP or HTTPS webpage URL.")
+        try:
+            addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+            if any(ipaddress.ip_address(item[4][0]).is_private or ipaddress.ip_address(item[4][0]).is_loopback or ipaddress.ip_address(item[4][0]).is_link_local for item in addresses):
+                raise HTTPException(status_code=400, detail="Private and local webpage addresses are not allowed.")
+            class RejectRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    return None
+            opener = urllib.request.build_opener(RejectRedirect)
+            request = urllib.request.Request(url, headers={"User-Agent": "NexoraStudyBuddy/1.0"})
+            with opener.open(request, timeout=8) as response:
+                body = response.read(5 * 1024 * 1024 + 1)
+                if len(body) > 5 * 1024 * 1024:
+                    raise HTTPException(status_code=400, detail="Webpage exceeds the 5MB ingestion limit.")
+                source_url = response.geturl()
+                if urlparse(source_url).hostname != parsed.hostname:
+                    raise HTTPException(status_code=400, detail="Cross-host webpage redirects are not allowed.")
+                page_html = body.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+            from html.parser import HTMLParser
+            class TextExtractor(HTMLParser):
+                def __init__(self):
+                    super().__init__(); self.parts = []; self.hidden = 0
+                def handle_starttag(self, tag, attrs):
+                    if tag in {"script", "style", "noscript", "svg"}: self.hidden += 1
+                    elif tag in {"p", "div", "br", "li", "h1", "h2", "h3", "section"}: self.parts.append("\n")
+                def handle_endtag(self, tag):
+                    if tag in {"script", "style", "noscript", "svg"}: self.hidden = max(0, self.hidden - 1)
+                def handle_data(self, data):
+                    if not self.hidden and data.strip(): self.parts.append(data.strip())
+            extractor = TextExtractor(); extractor.feed(page_html)
+            content = "\n".join(extractor.parts)
+            title = title or parsed.hostname
+            content_type = "text/html"
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not fetch webpage: {str(e)}")
     elif text_content:
         content = text_content
     else:
@@ -148,9 +230,11 @@ def upload_document(
 
     if not content.strip():
         raise HTTPException(status_code=400, detail="Document content cannot be empty.")
+    if not title.strip():
+        title = Path(file.filename).stem if file and file.filename else "Study notes"
 
     # Deduplicate ingestion using deterministic content hash
-    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+    content_hash = hashlib.sha256((config.owner_id + content).encode("utf-8")).hexdigest()[:12]
     doc_id = f"doc_{content_hash}"
 
     # Auto-extract year if not explicitly provided
@@ -169,11 +253,21 @@ def upload_document(
         "category": category,
         "source_type": "upload",
         "content_hash": content_hash,
-        "file_size_bytes": len(file_bytes) if file_bytes else len(content.encode("utf-8"))
+        "file_size_bytes": len(file_bytes) if file_bytes else len(content.encode("utf-8")),
+        "owner_id": config.owner_id, "content_type": content_type, "uploaded_at": time.time(), "source_url": source_url
     }
 
+    if file_bytes:
+        source_dir = Path(__file__).parent / "data" / "sources"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        extension = Path(file.filename).suffix.lower()
+        source_path = source_dir / f"{doc_id}{extension}"
+        source_path.write_bytes(file_bytes)
+        metadata["source_file"] = str(source_path)
+
     storage_service.add_document(doc_id, title, metadata, raw_text=content)
-    chunks = chunker.chunk_document(doc_id, title, content, metadata, pages=pages_data)
+    chunk_metadata = {key: value for key, value in metadata.items() if key != "source_file"}
+    chunks = chunker.chunk_document(doc_id, title, content, chunk_metadata, pages=pages_data)
     storage_service.add_chunks(chunks)
 
     return {
@@ -184,11 +278,28 @@ def upload_document(
         "total_knowledge_chunks": storage_service.count_chunks()
     }
 
+@app.get("/api/documents/{doc_id}/source")
+def open_source(doc_id: str, page: int = Query(1, ge=1)):
+    record = next((d for d in storage_service.list_documents() if d.get("id") == doc_id), None)
+    if not record or (record.get("metadata") or {}).get("owner_id") != config.owner_id:
+        raise HTTPException(status_code=404, detail="Source document not found.")
+    source = (record.get("metadata") or {}).get("source_file")
+    if source and Path(source).is_file():
+        return FileResponse(source, media_type=(record.get("metadata") or {}).get("content_type", "application/octet-stream"), filename=Path(source).name, content_disposition_type="inline")
+    text = record.get("raw_text", "")
+    page_text = "\n".join(line for line in text.splitlines() if not line.strip().lower().startswith("[page "))
+    safe_title = html.escape(str(record.get("title", "Source")))
+    return HTMLResponse(f"<meta charset='utf-8'><title>{safe_title}</title><main style='max-width:800px;margin:3rem auto;font:18px/1.7 system-ui'><h1>{safe_title}</h1><p>Page {page}</p><pre style='white-space:pre-wrap'>{html.escape(page_text)}</pre></main>")
+
 @app.delete("/api/documents/{doc_id}")
 def delete_document(doc_id: str):
+    record = next((d for d in storage_service.list_documents() if d.get("id") == doc_id), None)
+    if not record or (record.get("metadata") or {}).get("owner_id") != config.owner_id:
+        raise HTTPException(status_code=404, detail="Document not found.")
     success = storage_service.delete_document(doc_id)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found.")
+    remove_source_file(record)
     return {
         "success": True, 
         "message": f"Document '{doc_id}' successfully removed.",
@@ -200,7 +311,10 @@ def delete_document(doc_id: str):
 def reset_documents(confirm: bool = Form(False)):
     if not confirm:
         raise HTTPException(status_code=400, detail="Confirmation required to reset knowledge base. Pass confirm=true.")
-    storage_service.reset()
+    owned_docs = [d for d in storage_service.list_documents() if (d.get("metadata") or {}).get("owner_id") == config.owner_id]
+    storage_service.reset(owner_id=config.owner_id)
+    for record in owned_docs:
+        remove_source_file(record)
     load_sample_datasets(force_reload=True)
     return {
         "success": True, 
@@ -294,13 +408,16 @@ def export_report(req: ReportExportRequest):
 @app.get("/api/chunks/{chunk_id}")
 def get_chunk_details(chunk_id: str):
     chunk = storage_service.get_chunk(chunk_id)
-    if not chunk:
+    if not chunk or (chunk.metadata or {}).get("owner_id") != config.owner_id:
         raise HTTPException(status_code=404, detail="Chunk not found.")
     return chunk.model_dump()
 
 # 6. Core RAG Query Endpoint
 @app.post("/api/query", response_model=QueryResponse)
 def query_rag(req: QueryRequest):
+    if req.filters is not None:
+        # Owner identity comes from server deployment configuration, never request JSON.
+        req.filters.owner_id = config.owner_id
     # Direct field lookup is more reliable than semantic retrieval for form questions
     # such as "What is the name of the person in this document?".
     field_intent = detect_field_intent(req.question)
@@ -338,6 +455,39 @@ def query_rag(req: QueryRequest):
     # Store in server-side query history for authentic report generation
     storage_service.store_query_result(response.query_id, response)
     return response
+
+@app.post("/api/study/kit")
+def create_study_kit(req: StudyKitRequest):
+    if req.filters is None:
+        req.filters = SearchFilters()
+    req.filters.owner_id = config.owner_id
+    topic = req.topic.strip() or "key ideas"
+    citations, trace = storage_service.hybrid_search(
+        query=f"Key concepts and important facts about {topic}", filters=req.filters,
+        top_k=min(50, req.count * 2), use_hybrid=True,
+    )
+    if not citations:
+        return {"kind": req.kind, "topic": topic, "cards": [], "message": "No supporting study materials were found. Add or select source material first."}
+    cards = []
+    seen = set()
+    for citation in citations:
+        for sentence in re.split(r"(?<=[.!?])\s+", citation.snippet.strip()):
+            sentence = sentence.strip()
+            if len(sentence) < 30 or sentence.lower() in seen:
+                continue
+            seen.add(sentence.lower())
+            section = citation.section or "Key idea"
+            front = (f"What does {section} say about {topic}?" if req.kind == "quiz" else section)
+            cards.append({"front": front, "back": sentence, "citation": citation.model_dump()})
+            if len(cards) >= req.count:
+                break
+        if len(cards) >= req.count:
+            break
+    if req.kind == "revision":
+        cards = cards[:req.count]
+        for index, card in enumerate(cards, 1):
+            card["front"] = f"Revision step {index}: {card['front']}"
+    return {"kind": req.kind, "topic": topic, "cards": cards, "retrieval_backend": trace.get("retrieval_backend"), "message": "Study prompts are based on the cited passages below."}
 
 # 7. Benchmark Evaluation Suite with Ablation & Custom Test Cases
 @app.post("/api/eval/run", response_model=EvalSummary)
