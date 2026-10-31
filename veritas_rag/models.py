@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
 import uuid
 import time
@@ -83,12 +83,14 @@ class QueryRequest(BaseModel):
     filters: Optional[SearchFilters] = None
     use_hybrid: bool = True
     top_k: int = Field(default=5, ge=1, le=50)
+    answer_mode: Literal["grounded", "exact"] = "grounded"
     temperature: float = 0.2
 
 class QueryResponse(BaseModel):
     query_id: str = Field(default_factory=lambda: f"qry_{uuid.uuid4().hex[:8]}")
     question: str
     answer: str
+    answer_mode: Literal["grounded", "exact"] = "grounded"
     abstained: bool = False
     abstention_reason: Optional[str] = None
     citations: List[Citation] = Field(default_factory=list)
