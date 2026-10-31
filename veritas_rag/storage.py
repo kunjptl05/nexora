@@ -544,11 +544,7 @@ class StorageService:
             cursor = self.collection.aggregate(pipeline)
             return [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor], pipeline
 
-        # Use $rankFusion for hybrid retrieval. If unavailable, raise so the caller
-        # can explicitly fall back to local hybrid rather than label dense as hybrid.
-        try:
-            # (MongoDB 8.0+ GA since June 30 2026) for native hybrid search.
-        # Falls back to plain $vectorSearch for older clusters.
+        # Use MongoDB $rankFusion for hybrid retrieval.
         try:
             vector_sub = {
                 "$vectorSearch": {
@@ -638,55 +634,6 @@ class StorageService:
             raise RuntimeError(
                 f"Atlas hybrid $rankFusion unavailable; using local hybrid fallback: {rank_fusion_err}"
             ) from rank_fusion_err
-
-            plain_pipeline = [
-                {
-                    "$vectorSearch": {
-                        "index": config.vector_index_name,
-                        "path": "embedding",
-                        "queryVector": query_embedding,
-                        "numCandidates": top_k * 10,
-                        "limit": top_k,
-                    }
-                },
-                {
-                    "$project": {
-                        "id": 1,
-                        "doc_id": 1,
-                        "doc_title": 1,
-                        "section": 1,
-                        "page_number": 1,
-                        "content": 1,
-                        "metadata": 1,
-                        "score": {"$meta": "vectorSearchScore"}
-                    }
-                }
-            ]
-            if mongo_filter:
-                plain_pipeline[0]["$vectorSearch"]["filter"] = mongo_filter  # type: ignore[index]
-
-            cursor = self.collection.aggregate(plain_pipeline)
-            results = []
-            for doc in cursor:
-                score = doc.get("score", 0.0)
-                cit = Citation(
-                    id=doc.get("id", str(doc.get("_id"))),
-                    doc_id=doc.get("doc_id", "unknown"),
-                    doc_title=doc.get("doc_title", "Untitled"),
-                    section=doc.get("section", ""),
-                    page_number=doc.get("page_number", 1),
-                    snippet=doc.get("content", ""),
-                    similarity_score=round(score, 4),
-                    combined_score=round(score, 4),
-                    metadata=doc.get("metadata", {})
-                )
-                results.append(cit)
-
-            if not results:
-                print(f"[StorageService] WARNING: Atlas $vectorSearch returned 0 results for query: '{query[:80]}' — "
-                      "check that the Atlas vector index exists and chunks are inserted.")
-
-            return results, plain_pipeline
 
     def _atlas_citation(self, doc: Dict[str, Any], score: float) -> Citation:
         return Citation(
