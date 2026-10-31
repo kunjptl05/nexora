@@ -106,7 +106,7 @@ function switchTab(tabId) {
   const viewSubtext = document.getElementById('currentViewSubtext');
   if (viewTitle && titles[tabId]) {
     viewTitle.innerHTML = `<i data-lucide="${titles[tabId].icon}" class="w-4 h-4 text-emerald-700"></i><span>${titles[tabId].title}</span>`;
-    viewSubtext.textContent = titles[tabId].subtext;
+    if (viewSubtext) viewSubtext.textContent = titles[tabId].subtext;
   }
 
   tabs.forEach(t => {
