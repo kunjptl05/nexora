@@ -28,7 +28,8 @@ class GroundedGenerator:
         question: str,
         citations: List[Citation],
         explain_search: Dict[str, Any],
-        answer_mode: str = "grounded"
+        answer_mode: str = "grounded",
+        temperature: float = 0.2
     ) -> QueryResponse:
         start_time = time.perf_counter()
         mode = "exact" if str(answer_mode).lower() == "exact" else "grounded"
@@ -77,7 +78,7 @@ class GroundedGenerator:
 
         # 3. Generate a grounded answer or return exact extracted source sentences.
         answer, generation_mode = self._synthesize_answer(
-            question, citations, conflicts, answer_mode=mode
+            question, citations, conflicts, answer_mode=mode, temperature=temperature
         )
 
         # 4. Measure lexical support against the same retrieved source set.
@@ -269,7 +270,8 @@ class GroundedGenerator:
         question: str,
         citations: List[Citation],
         conflicts: List[ConflictItem],
-        answer_mode: str = "grounded"
+        answer_mode: str = "grounded",
+        temperature: float = 0.2
     ) -> Tuple[str, str]:
         """Returns (answer_text, generation_mode)."""
         if answer_mode == "exact":
@@ -286,11 +288,13 @@ class GroundedGenerator:
         if config.gemini_api_key:
             try:
                 from google import genai
+                from google.genai import types
                 client = genai.Client(api_key=config.gemini_api_key)
                 prompt = self._build_grounded_prompt(question, citations, conflicts)
                 response = client.models.generate_content(
                     model=config.gemini_model,
-                    contents=prompt
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=max(0.0, min(2.0, temperature)))
                 )
                 if response.text:
                     answer = response.text.strip()
