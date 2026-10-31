@@ -97,6 +97,35 @@ class GroundedAnswerTests(unittest.TestCase):
         self.assertIn("sodium-ion", answer)
         self.assertNotIn("- **anode**", answer)
 
+    def test_atlas_rrf_scale_does_not_trigger_abstention_when_passage_terms_match(self):
+        low_rrf = Citation(
+            id="atlas-chunk",
+            doc_id="doc-storage",
+            doc_title="Grid Storage Technical Whitepaper",
+            section="Metrics",
+            page_number=3,
+            snippet="Grid-scale battery storage reports roundtrip efficiency of 86.5 percent.",
+            similarity_score=0.016,
+            keyword_score=0.0,
+            combined_score=0.032,
+            metadata={},
+        )
+        abstained, reason, closest = self.generator._check_abstention(
+            "What is the battery storage roundtrip efficiency?", [low_rrf]
+        )
+        self.assertFalse(abstained)
+        self.assertEqual(reason, "")
+        self.assertEqual(closest, [])
+
+    def test_unrelated_retrieved_passage_still_abstains(self):
+        unrelated = citation("The authentication gateway uses signed tokens.")
+        abstained, reason, closest = self.generator._check_abstention(
+            "What is the battery storage chemistry?", [unrelated]
+        )
+        self.assertTrue(abstained)
+        self.assertIn("key terms", reason)
+        self.assertTrue(closest)
+
     def test_component_prompt_requires_a_complete_supported_list(self):
         prompt = self.generator._build_grounded_prompt(
             "What are the components of the battery?", [citation("LFP and sodium-ion battery chemistries.")], []
