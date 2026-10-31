@@ -1052,7 +1052,7 @@ function renderKnowledgeBaseDocs() {
 
           <div class="mb-4 rounded-xl border border-stone-200 bg-[#F7F9F8] p-3">
             <h4 class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-emerald-900">File summary</h4>
-            <p class="text-xs leading-relaxed text-stone-700">${escapeHtml(d.metadata.summary || 'Summary not available for this file yet.')}</p>
+            <p class="text-xs leading-relaxed text-stone-700">${escapeHtml(d.metadata.summary || 'No readable text was extracted from this file.')}</p>
           </div>
         </div>
 
