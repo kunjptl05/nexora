@@ -340,7 +340,9 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
             )
 
         lines: List[str] = []
-        if self._is_component_question(question):
+        retrieved_text = " ".join(citation.snippet.lower() for citation in citations)
+        is_battery_context = any(term in retrieved_text for term in self._BATTERY_TERMS)
+        if self._is_component_question(question) and is_battery_context:
             chemistries = self._extract_battery_chemistries(selected)
             physical_part_patterns = [
                 ("anode", re.compile(r"\banode\b", re.IGNORECASE)),
