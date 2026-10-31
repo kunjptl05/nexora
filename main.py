@@ -128,6 +128,12 @@ def list_documents():
         doc.get("metadata", {}).pop("source_file", None)
     return docs
 
+def make_document_summary(text: str, limit: int = 900) -> str:
+    """Create a compact source-grounded overview from extracted document text."""
+    paragraphs = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
+    useful = [part for part in paragraphs if not part.startswith(("[Page ", "http://", "https://"))]
+    return (" ".join(useful[:3])[:limit].strip() or "No readable text was extracted from this file.")
+
 def remove_source_file(record: dict) -> None:
     source = (record.get("metadata") or {}).get("source_file")
     if not source:
@@ -254,7 +260,8 @@ def upload_document(
         "source_type": "upload",
         "content_hash": content_hash,
         "file_size_bytes": len(file_bytes) if file_bytes else len(content.encode("utf-8")),
-        "owner_id": config.owner_id, "content_type": content_type, "uploaded_at": time.time(), "source_url": source_url
+        "owner_id": config.owner_id, "content_type": content_type, "uploaded_at": time.time(), "source_url": source_url,
+        "summary": make_document_summary(content)
     }
 
     if file_bytes:

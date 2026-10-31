@@ -11,7 +11,8 @@ let appState = {
   latestQueryId: null,
   latestExplainPlan: null,
   kbCategoryFilter: 'all',
-  activeCitationId: null
+  activeCitationId: null,
+  activeConversationId: null
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initApp() {
   initWorkspacePanels();
+  initConversations();
   await fetchStatus();
   await loadDocuments();
   initDefaultConflictDashboard();
@@ -76,7 +78,7 @@ async function fetchStatus() {
 
 function switchTab(tabId) {
   appState.activeTab = tabId;
-  const tabs = ['chat', 'docs', 'conflict', 'eval'];
+  const tabs = ['chat', 'docs', 'conflict'];
   
   const titles = {
     chat: {
@@ -90,14 +92,9 @@ function switchTab(tabId) {
       subtext: "Your uploaded notes, readings, and learning resources"
     },
     conflict: {
-      title: "Compare Algorithms · Study Guide",
+      title: "Conflicts in My Materials",
       icon: "git-compare",
-      subtext: "Review how algorithms differ using your study materials"
-    },
-    eval: {
-      title: "Study Quality · Learning Checks",
-      icon: "bar-chart-2",
-      subtext: "Check coverage across your study materials"
+      subtext: "Check selected files for claims that may disagree"
     },
   };
 
@@ -123,7 +120,51 @@ function switchTab(tabId) {
   });
 
   if (tabId === 'docs') loadDocuments();
-  if (tabId === 'eval' && !appState.evalResults) runFullBenchmark();
+  lucide.createIcons();
+}
+
+function initConversations() {
+  const items = JSON.parse(localStorage.getItem('nexoraConversations') || '[]');
+  if (!items.length) {
+    items.push({ id: crypto.randomUUID(), title: 'New conversation', html: '' });
+    localStorage.setItem('nexoraConversations', JSON.stringify(items));
+  }
+  appState.activeConversationId = items[0].id;
+  renderConversationPicker(items);
+}
+
+function renderConversationPicker(items = JSON.parse(localStorage.getItem('nexoraConversations') || '[]')) {
+  const picker = document.getElementById('conversationPicker');
+  if (!picker) return;
+  picker.innerHTML = items.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === appState.activeConversationId ? 'selected' : ''}>${escapeHtml(item.title)}</option>`).join('');
+}
+
+function saveActiveConversation() {
+  const items = JSON.parse(localStorage.getItem('nexoraConversations') || '[]');
+  const item = items.find(x => x.id === appState.activeConversationId);
+  if (!item) return;
+  item.html = document.getElementById('chatStream')?.innerHTML || '';
+  const first = document.querySelector('#chatStream .user-question');
+  if (first) item.title = first.textContent.trim().slice(0, 42) || 'New conversation';
+  localStorage.setItem('nexoraConversations', JSON.stringify(items));
+  renderConversationPicker(items);
+}
+
+function createConversation() {
+  const items = JSON.parse(localStorage.getItem('nexoraConversations') || '[]');
+  const item = { id: crypto.randomUUID(), title: 'New conversation', html: '' };
+  items.unshift(item);
+  appState.activeConversationId = item.id;
+  localStorage.setItem('nexoraConversations', JSON.stringify(items));
+  document.getElementById('chatStream').innerHTML = '';
+  renderConversationPicker(items);
+}
+
+function switchConversation(id) {
+  saveActiveConversation();
+  appState.activeConversationId = id;
+  const item = JSON.parse(localStorage.getItem('nexoraConversations') || '[]').find(x => x.id === id);
+  document.getElementById('chatStream').innerHTML = item?.html || '';
   lucide.createIcons();
 }
 
@@ -404,6 +445,7 @@ async function handleQuerySubmit(e) {
 
     removeLoadingIndicator(loadingId);
     appendAssistantResponse(data);
+    saveActiveConversation();
     renderEvidenceInspector(data.citations);
     
     if (data.conflicts && data.conflicts.length > 0) {
@@ -472,7 +514,7 @@ function renderKnowledgeGaps(stream) {
 function appendUserMessage(text) {
   const stream = document.getElementById('chatStream');
   const div = document.createElement('div');
-  div.className = "flex justify-end";
+  div.className = "flex justify-end user-question";
   div.innerHTML = `
     <div class="max-w-xl bg-white border border-stone-200 rounded-2xl p-4 text-xs text-stone-900 shadow-2xs">
       <div class="flex items-center gap-1.5 mb-1 text-[11px] font-bold text-emerald-800">
@@ -621,10 +663,7 @@ function appendAssistantResponse(data) {
           ${groundedBadge}
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="exportCurrentReport()" title="Export server-verified report" 
-                  class="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-emerald-800 transition-colors">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i>
-          </button>
+
           <span class="text-[10px] text-stone-400 font-mono font-semibold">${data.latency_ms} ms</span>
         </div>
       </div>
@@ -784,6 +823,40 @@ function openPassageModal(citationId) {
 // ----------------- CONFLICT DASHBOARD -----------------
 
 function initDefaultConflictDashboard() {
+  renderConflictDashboardCards([]);
+}
+
+async function checkMaterialConflicts() {
+  const selected = Array.from(appState.selectedScopeDocIds);
+  const container = document.getElementById('conflictDashboardCards');
+  if (!appState.documents.length) {
+    container.innerHTML = '<p class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">Add study materials first.</p>';
+    return;
+  }
+  container.innerHTML = '<p class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">Searching selected files for conflicting claims…</p>';
+  try {
+    const response = await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: 'Find claims in these documents that disagree about the same topic, value, rule, date, or conclusion. Return only conflicts supported by both passages.', top_k: 20, use_hybrid: true, filters: selected.length && selected.length < appState.documents.length ? { doc_ids: selected } : {} }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || 'Could not check these files.');
+    renderConflictDashboardCards(result.conflicts || []);
+    if (!result.conflicts?.length) container.insertAdjacentHTML('afterbegin', '<p class="text-sm text-stone-600">No supported conflicting claims were found in the retrieved passages.</p>');
+  } catch (error) {
+    container.innerHTML = `<p class="text-sm text-rose-700">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderConflictDashboardCards(conflicts) {
+  const container = document.getElementById('conflictDashboardCards');
+  if (!container) return;
+  if (!conflicts.length) {
+    container.innerHTML = '<p class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">Select your materials and choose “Check selected materials” to look for conflicts.</p>';
+    return;
+  }
+  renderConflictCards(conflicts);
+}
+
+function renderConflictCards(conflicts) {
+  /*
   const defaultShowcaseConflicts = [
     {
       subject: "Hash map lookup: average and worst case",
@@ -829,10 +902,7 @@ function initDefaultConflictDashboard() {
     }
   ];
 
-  renderConflictDashboardCards(defaultShowcaseConflicts, true);
-}
-
-function renderConflictDashboardCards(conflicts, isIllustrative = false) {
+  */
   const container = document.getElementById('conflictDashboardCards');
   if (!container || !conflicts) return;
 
@@ -841,9 +911,9 @@ function renderConflictDashboardCards(conflicts, isIllustrative = false) {
       <div class="flex items-center justify-between">
         <h3 class="text-xs font-extrabold text-[#0F3E33] uppercase tracking-wider flex items-center gap-1.5">
           <i data-lucide="git-commit" class="w-4 h-4 text-emerald-700"></i>
-          <span>${isIllustrative ? "Illustrative conflict examples" : "Potential differences found"} (${conflicts.length})</span>
+          <span>Potential differences found (${conflicts.length})</span>
         </h3>
-        <span class="text-[10px] text-stone-500 font-semibold">${isIllustrative ? "Synthetic examples · not results from your documents" : "Review both source passages before drawing a conclusion"}</span>
+        <span class="text-[10px] text-stone-500 font-semibold">Retrieved from your materials · review both passages</span>
       </div>
 
       ${conflicts.map(cf => `
@@ -941,7 +1011,7 @@ function renderKnowledgeBaseDocs() {
 
   let filtered = appState.documents.filter(d => {
     const matchesSearch = d.title.toLowerCase().includes(search) || 
-                          d.raw_text.toLowerCase().includes(search) ||
+                          (d.metadata.summary || '').toLowerCase().includes(search) ||
                           (d.metadata.author || '').toLowerCase().includes(search);
     const matchesCat = catFilter === 'all' || (d.metadata.category || '') === catFilter;
     return matchesSearch && matchesCat;
@@ -980,9 +1050,10 @@ function renderKnowledgeBaseDocs() {
             </span>
           </div>
 
-          <p class="text-xs text-stone-600 line-clamp-3 leading-relaxed mb-4 font-mono text-[11px] bg-[#F7F9F8] p-2.5 rounded-xl border border-stone-200">
-            ${escapeHtml(d.raw_text.substring(0, 180))}...
-          </p>
+          <div class="mb-4 rounded-xl border border-stone-200 bg-[#F7F9F8] p-3">
+            <h4 class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-emerald-900">File summary</h4>
+            <p class="text-xs leading-relaxed text-stone-700">${escapeHtml(d.metadata.summary || 'Summary not available for this file yet.')}</p>
+          </div>
         </div>
 
         <div>
@@ -994,6 +1065,7 @@ function renderKnowledgeBaseDocs() {
           <div class="flex items-center justify-between pt-1">
             <span class="text-[10px] font-mono text-stone-400">ID: ${escapeHtml(d.id)}</span>
             <div class="flex items-center gap-2">
+              <button onclick="window.open('/api/documents/${encodeURIComponent(d.id)}/source','_blank','noopener')" class="px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 text-[11px] font-bold">View file</button>
               <button onclick="deleteDocument('${d.id}', '${escapeHtml(d.title)}')" 
                       class="px-2.5 py-1 text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors">
                 <i data-lucide="trash-2" class="w-3 h-3 text-rose-600"></i>

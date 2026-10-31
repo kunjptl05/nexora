@@ -299,7 +299,6 @@ class GroundedGenerator:
                 )
                 if response.text:
                     answer = response.text.strip()
-                    answer += self._verbatim_evidence_block(question, citations)
                     return answer, "gemini-grounded"
             except Exception as e:
                 print(f"[GroundedGenerator] Gemini call failed, using local synthesizer: {e}")
@@ -385,7 +384,7 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
         citations: List[Citation],
         conflicts: List[ConflictItem]
     ) -> str:
-        selected = self._select_relevant_sentences(question, citations, max_sentences=6)
+        selected = self._select_relevant_sentences(question, citations, max_sentences=2)
         if not selected:
             return (
                 "**Insufficient detail in retrieved passages**\n\n"
@@ -435,7 +434,7 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
                 lines.append("The retrieved passages mention battery-related information, but they do not provide a clear list of battery components or chemistries.")
                 lines.append("I have not added a generic component list because it is not stated in the retrieved evidence.")
         else:
-            lines.append("**Answer based on the retrieved documents**")
+            lines.append("**Answer**")
             for citation_number, sentence in selected[:6]:
                 lines.append(f"- {sentence} [{citation_number}]")
 
@@ -448,7 +447,6 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
                 )
 
         answer = "\n".join(lines)
-        answer += self._verbatim_evidence_block(question, citations)
         return answer
 
     def _calculate_groundedness(self, answer: str, citations: List[Citation]) -> float:

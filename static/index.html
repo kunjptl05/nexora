@@ -180,16 +180,16 @@
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all text-emerald-100 hover:text-white hover:bg-emerald-900/40">
           <div class="flex items-center gap-2.5">
             <i data-lucide="git-compare" class="w-4 h-4 text-emerald-300"></i>
-            <span>Compare Algorithms</span>
+            <span>Conflicts in My Materials</span>
           </div>
           <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#E07A5F]/20 text-[#E07A5F] border border-[#E07A5F]/30">Radar</span>
         </button>
 
-        <button onclick="switchTab('eval')" id="navBtn-eval"
+        <button onclick="switchTab('eval')" id="navBtn-eval" class="hidden"
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all text-emerald-100 hover:text-white hover:bg-emerald-900/40">
           <div class="flex items-center gap-2.5">
             <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-300"></i>
-            <span>Study Quality</span>
+            <span class="hidden">Study Quality</span>
           </div>
           <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-900/80 text-emerald-200 border border-emerald-800">Review</span>
         </button>
@@ -221,12 +221,6 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <button onclick="exportCurrentReport()" title="Export server-verified intelligence report"
-                class="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-50 text-stone-700 hover:text-stone-900 border border-stone-200 text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs">
-          <i data-lucide="download" class="w-3.5 h-3.5 text-[#E07A5F]"></i>
-          <span>Export Report</span>
-        </button>
-
         <button onclick="openUploadModal()" class="px-3.5 py-1.5 rounded-xl bg-[#0F3E33] hover:bg-[#0B332A] text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs">
           <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
           <span>Ingest PDF/Text</span>
@@ -285,7 +279,7 @@
           <!-- DSA Practice Prompts -->
           <div class="px-5 py-2.5 border-b border-stone-200/80 bg-white shrink-0 flex items-center gap-2 overflow-x-auto text-xs custom-scrollbar">
             <span class="text-stone-400 font-bold flex items-center gap-1 shrink-0 text-[11px]">
-              <i data-lucide="zap" class="w-3.5 h-3.5 text-[#E07A5F]"></i> Try a DSA question:
+              <i data-lucide="zap" class="w-3.5 h-3.5 text-[#E07A5F]"></i> Try a question:
             </span>
             <button type="button" class="panel-toggle shrink-0" onclick="toggleWorkspacePanel('chat')" title="Close Conversation" aria-label="Close Conversation">
               <i data-lucide="panel-top-close" class="w-4 h-4"></i>
@@ -310,10 +304,8 @@
 
           <!-- Messages Stream -->
           <div class="px-5 py-2 flex flex-wrap gap-2 border-b border-stone-100 bg-white">
-            <button onclick="createStudyKit('quiz')" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 text-[11px] font-bold">Quick quiz</button>
-            <button onclick="createStudyKit('flashcards')" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 text-[11px] font-bold">Flashcards</button>
-            <button onclick="createStudyKit('revision')" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 text-[11px] font-bold">Revision plan</button>
-            <span class="self-center text-[10px] text-stone-500">Practice based on your selected study materials</span>
+            <button id="newConversationButton" onclick="createConversation()" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 text-[11px] font-bold">New conversation</button>
+            <select id="conversationPicker" onchange="switchConversation(this.value)" class="px-2 py-1.5 rounded-lg border text-[11px]"></select>
           </div>
           <div id="chatStream" class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5" aria-live="polite">
             <!-- Conversation messages appear here after the first query. -->
@@ -470,17 +462,17 @@
                 <span class="w-2.5 h-2.5 rounded-full bg-[#E07A5F] animate-ping"></span>
                 <h2 class="text-lg font-extrabold text-[#0F3E33] flex items-center gap-2">
                   <i data-lucide="git-compare" class="w-5 h-5 text-emerald-700"></i>
-                  <span>Compare Algorithms</span>
+                  <span>Find Conflicts</span>
                 </h2>
               </div>
-              <p class="text-xs text-stone-500">Compare algorithm choices, input requirements, and time and space costs.</p>
+              <p class="text-xs text-stone-500">Look for statements in your selected documents that may disagree.</p>
             </div>
 
             <div class="flex items-center gap-2">
-              <button onclick="runSamplePrompt('Compare average and worst-case hash map lookup time with cited examples.')"
+              <button onclick="checkMaterialConflicts()"
                       class="px-4 py-2 bg-[#E07A5F] hover:bg-[#D0694E] text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all">
                 <i data-lucide="play" class="w-4 h-4"></i>
-                <span>Compare hash map complexity</span>
+                <span>Check selected materials</span>
               </button>
             </div>
           </div>
@@ -718,7 +710,7 @@
       <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="block text-stone-700 font-bold mb-1">Category</label>
-          <input type="text" id="upCategory" value="Data Structures & Algorithms"
+          <input type="text" id="upCategory" value="General Study Materials"
                  class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
         </div>
         <div>
