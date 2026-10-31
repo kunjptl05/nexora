@@ -15,13 +15,13 @@ class AppConfig(BaseModel):
     # Gemini / AI Settings
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     
     # Tuning Parameters
-    chunk_size: int = 500
-    chunk_overlap: int = 60
+    chunk_size: int = 900
+    chunk_overlap: int = 150
     similarity_threshold: float = 0.45
     top_k: int = 5
-    abstention_threshold: float = 0.52
+    abstention_threshold: float = 0.15
 
 config = AppConfig()
