@@ -146,10 +146,13 @@ class StorageService:
         if self.is_connected and self.collection is not None:
             try:
                 self.collection.delete_many({})
+                self.db["documents"].delete_many({})
+                self.db["field_extractions"].delete_many({})
             except Exception as e:
-                print(f"[StorageService] Failed to clear Atlas collection: {e}")
+                print(f"[StorageService] Failed to clear Atlas collections: {e}")
         self._chunks.clear()
         self._documents.clear()
+        self._field_chunks.clear()
         self._query_history.clear()
         self._save_to_disk()
 
@@ -277,6 +280,14 @@ class StorageService:
                 ]
                 if operations:
                     self.collection.bulk_write(operations, ordered=False)
+                for doc_id in {chunk.doc_id for chunk in chunks}:
+                    document = self._documents.get(doc_id)
+                    if document:
+                        self.db["documents"].update_one(
+                            {"id": doc_id},
+                            {"$set": {"chunk_count": document.get("chunk_count", 0)}},
+                            upsert=True
+                        )
             except Exception as e:
                 raise RuntimeError(f"Failed to upsert chunks into Atlas: {e}") from e
 
