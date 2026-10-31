@@ -6,10 +6,11 @@ import time
 class DocumentMetadata(BaseModel):
     title: str
     author: Optional[str] = "Unknown"
-    year: Optional[int] = 2025
+    year: Optional[int] = None
     category: Optional[str] = "General"
     source_type: str = "upload" # pdf, txt, markdown, preloaded
     file_size_bytes: int = 0
+    content_hash: Optional[str] = None
     created_at: float = Field(default_factory=time.time)
 
 class DocumentChunk(BaseModel):
@@ -20,6 +21,9 @@ class DocumentChunk(BaseModel):
     page_number: Optional[int] = 1
     content: str
     embedding: Optional[List[float]] = None
+    embedding_dim: Optional[int] = None
+    embedding_model: Optional[str] = "local-dense"
+    content_hash: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
 
@@ -27,7 +31,7 @@ class DocumentUploadRequest(BaseModel):
     title: str
     content: str
     author: Optional[str] = "Anonymous"
-    year: Optional[int] = 2025
+    year: Optional[int] = None
     category: Optional[str] = "General"
 
 class SearchFilters(BaseModel):
@@ -65,30 +69,34 @@ class ConflictItem(BaseModel):
     explanation: str
 
 class ReportExportRequest(BaseModel):
-    query: str
-    answer: str
-    citations: List[Citation]
-    conflicts: List[ConflictItem]
-    groundedness_score: float
+    query_id: str
     format: str = "markdown" # markdown, json, text
+    # Optional client-side overrides if server cache evicted
+    query: Optional[str] = None
+    answer: Optional[str] = None
+    citations: Optional[List[Citation]] = None
+    conflicts: Optional[List[ConflictItem]] = None
+    groundedness_score: Optional[float] = None
 
 class QueryRequest(BaseModel):
     question: str
     filters: Optional[SearchFilters] = None
     use_hybrid: bool = True
-    top_k: int = 5
+    top_k: int = Field(default=5, ge=1, le=50)
     temperature: float = 0.2
 
 class QueryResponse(BaseModel):
+    query_id: str = Field(default_factory=lambda: f"qry_{uuid.uuid4().hex[:8]}")
     question: str
     answer: str
     abstained: bool = False
     abstention_reason: Optional[str] = None
     citations: List[Citation] = Field(default_factory=list)
     conflicts: List[ConflictItem] = Field(default_factory=list)
-    groundedness_score: float = 0.0 # 0 to 100%
+    groundedness_score: float = 0.0  # 0 to 100%, claim-level, no floor/bonus
     latency_ms: float = 0.0
     explain_search: Dict[str, Any] = Field(default_factory=dict)
+    generation_mode: str = "local-extractive"  # "gemini" | "local-extractive" | "abstained"
 
 class EvalTestCase(BaseModel):
     id: str
@@ -115,11 +123,21 @@ class EvalMetricResult(BaseModel):
 
 class EvalSummary(BaseModel):
     total_tests: int
-    hit_rate: float # e.g. 0.95
+    hit_rate: float # e.g. 1.0
     mrr: float # Mean Reciprocal Rank
     precision_at_3: float
     conflict_detection_accuracy: float
     abstention_accuracy: float
     avg_latency_ms: float
     avg_groundedness: float
+    # Ablation metrics: Dense vs Lexical vs Hybrid
+    dense_hit_rate: float = 0.0
+    dense_mrr: float = 0.0
+    lexical_hit_rate: float = 0.0
+    lexical_mrr: float = 0.0
+    hybrid_hit_rate: float = 0.0
+    hybrid_mrr: float = 0.0
     results: List[EvalMetricResult]
+
+class CustomEvalRequest(BaseModel):
+    test_cases: Optional[List[EvalTestCase]] = None
