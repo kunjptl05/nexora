@@ -10,6 +10,7 @@ from veritas_rag.models import DocumentChunk, SearchFilters, Citation, QueryResp
 from veritas_rag.config import config
 from veritas_rag.embeddings import embedding_service
 from veritas_rag.field_extractor import extract_labelled_fields
+from veritas_rag.chunker import chunker
 
 class StorageService:
     def __init__(self):
@@ -154,33 +155,45 @@ class StorageService:
 
     def re_embed_all_chunks(self) -> int:
         """Re-embeds all existing chunks when the embedding key or model switches."""
-        if not self._chunks:
-            return 0
         chunk_list = list(self._chunks.values())
-        texts = [c.content for c in chunk_list]
+        if not chunk_list and self.is_connected and self.collection is not None:
+            records = self.collection.find({}, {"_id": 0})
+            chunk_list = [DocumentChunk(**record) for record in records]
+        if not chunk_list:
+            return 0
+
+        texts = [chunker.get_embedding_text(c) for c in chunk_list]
         new_embeddings = embedding_service.get_embeddings_batch(texts)
         active_dim = embedding_service.vector_dim
-        active_model = getattr(embedding_service, 'current_model_name', 'dense-embedding')
+        active_model = embedding_service.current_model_name
 
         for idx, c in enumerate(chunk_list):
             c.embedding = new_embeddings[idx]
-            c.embedding_dim = active_dim
+            c.embedding_dim = len(new_embeddings[idx])
             c.embedding_model = active_model
             self._chunks[c.id] = c
 
         self._save_to_disk()
 
-        # If connected to MongoDB Atlas, update remote documents
         if self.is_connected and self.collection is not None:
             try:
-                for c in chunk_list:
-                    self.collection.update_one(
+                from pymongo import UpdateOne
+                operations = [
+                    UpdateOne(
                         {"id": c.id},
-                        {"$set": {"embedding": c.embedding, "embedding_dim": active_dim, "embedding_model": active_model}},
+                        {"$set": {
+                            "embedding": c.embedding,
+                            "embedding_dim": c.embedding_dim,
+                            "embedding_model": c.embedding_model
+                        }},
                         upsert=True
                     )
-            except Exception as e:
-                print(f"[StorageService] Failed to update Atlas embeddings: {e}")
+                    for c in chunk_list
+                ]
+                if operations:
+                    self.collection.bulk_write(operations, ordered=False)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to update Atlas embeddings in batch: {exc}") from exc
 
         return len(chunk_list)
 
@@ -212,7 +225,7 @@ class StorageService:
         # Embed title + section + content so short passages retain document context.
         missing_chunks = [c for c in chunks if not c.embedding]
         enriched_texts = [
-            f"{c.doc_title} > {c.section or 'Overview'}\n{c.content}"
+            chunker.get_embedding_text(c)
             for c in missing_chunks
         ]
 
@@ -395,6 +408,7 @@ class StorageService:
         start_time = time.perf_counter()
         query_embedding = embedding_service.get_embedding(query)
         embed_time = (time.perf_counter() - start_time) * 1000
+        self._validate_embedding_space(query_embedding, filters)
 
         # Build sample / actual MongoDB $vectorSearch aggregation pipeline
         mongo_filter = self._build_mongo_filter(filters)
@@ -809,9 +823,43 @@ class StorageService:
             return False
         return True
 
+    def _validate_embedding_space(
+        self, query_embedding: List[float], filters: Optional[SearchFilters] = None
+    ) -> None:
+        """Refuse to mix vectors produced by incompatible models or dimensions."""
+        expected_dim = len(query_embedding)
+        expected_model = embedding_service.current_model_name
+
+        if self.is_connected and self.collection is not None:
+            mongo_filter = self._build_mongo_filter(filters)
+            models = self.collection.distinct("embedding_model", mongo_filter)
+            dimensions = self.collection.distinct("embedding_dim", mongo_filter)
+        else:
+            candidates = [
+                chunk for chunk in self._chunks.values()
+                if self._matches_filter(chunk, filters) and chunk.embedding
+            ]
+            models = list({chunk.embedding_model for chunk in candidates})
+            dimensions = list({chunk.embedding_dim or len(chunk.embedding or []) for chunk in candidates})
+
+        model_mismatch = [model for model in models if model and model != expected_model]
+        dimension_mismatch = [dim for dim in dimensions if dim and int(dim) != expected_dim]
+        if model_mismatch or dimension_mismatch:
+            raise RuntimeError(
+                "The indexed documents use a different embedding space from the active query model. "
+                f"Active model/dimension: {expected_model}/{expected_dim}; "
+                f"indexed models/dimensions: {models}/{dimensions}. "
+                "Re-embed the full knowledge base before searching. No cross-model fallback was attempted."
+            )
+
     def _cosine_similarity(self, v1: List[float], v2: List[float]) -> float:
-        if not v1 or not v2 or len(v1) != len(v2):
+        if not v1 or not v2:
             return 0.0
+        if len(v1) != len(v2):
+            raise ValueError(
+                f"Embedding dimension mismatch: query={len(v1)}, document={len(v2)}. "
+                "Re-embed the knowledge base with one configured embedding model."
+            )
         dot = sum(a * b for a, b in zip(v1, v2))
         return max(0.0, min(1.0, dot))
 
