@@ -98,7 +98,7 @@ class QueryResponse(BaseModel):
     groundedness_score: float = 0.0  # 0 to 100%, claim-level, no floor/bonus
     latency_ms: float = 0.0
     explain_search: Dict[str, Any] = Field(default_factory=dict)
-    generation_mode: str = "local-extractive"  # "gemini" | "local-extractive" | "abstained"
+    generation_mode: str = "local-grounded"  # gemini-grounded | local-grounded | local-grounded-structured | exact-extractive | abstained
 
 class EvalTestCase(BaseModel):
     id: str
