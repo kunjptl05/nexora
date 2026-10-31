@@ -677,7 +677,7 @@ class StorageService:
                     "path": "embedding",
                     "queryVector": query_embedding,
                     "numCandidates": top_k * 10,
-                    "limit": top_k,
+                    "limit": top_k * 4,
                     **({"filter": mongo_filter} if mongo_filter else {})
                 }},
                 {"$project": {
@@ -687,7 +687,8 @@ class StorageService:
                 }}
             ]
             cursor = self.collection.aggregate(pipeline)
-            return [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor], pipeline
+            results = [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor]
+            return self._diversify_results(results, top_k, query), pipeline
 
         if search_mode == "lexical":
             search_compound = {
