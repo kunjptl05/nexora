@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from veritas_rag.models import DocumentChunk, SearchFilters, Citation, QueryResponse
 from veritas_rag.config import config
 from veritas_rag.embeddings import embedding_service
+from veritas_rag.field_extractor import extract_labelled_fields
 
 class StorageService:
     def __init__(self):
@@ -23,6 +24,9 @@ class StorageService:
         self._chunks: Dict[str, DocumentChunk] = {}
         self._documents: Dict[str, Dict[str, Any]] = {}
         self._query_history: Dict[str, QueryResponse] = {}
+        # Ephemeral field-level evidence chunks are addressable from the citation UI
+        # but are not inserted into the vector/BM25 corpus.
+        self._field_chunks: Dict[str, DocumentChunk] = {}
         
         # Load persisted data from disk if available
         self._load_from_disk()
@@ -94,11 +98,17 @@ class StorageService:
             except Exception:
                 pass  # Index may already exist
 
-            # Sync local chunks into Atlas collection if collection is empty
-            if self.collection.count_documents({}) == 0 and self._chunks:
-                docs_to_insert = [c.model_dump() for c in self._chunks.values()]
-                self.collection.insert_many(docs_to_insert)
+            # Idempotently sync local chunks and document records into Atlas.
+            if self._chunks:
+                from pymongo import UpdateOne
+                operations = [
+                    UpdateOne({"id": chunk.id}, {"$set": chunk.model_dump()}, upsert=True)
+                    for chunk in self._chunks.values()
+                ]
+                if operations:
+                    self.collection.bulk_write(operations, ordered=False)
 
+            self._load_documents_from_atlas()
             return True, "Successfully connected to MongoDB Atlas Vector Search!"
         except Exception as e:
             self.is_connected = False
@@ -180,6 +190,7 @@ class StorageService:
             "title": title,
             "metadata": metadata,
             "raw_text": raw_text,
+            "extracted_fields": extract_labelled_fields(raw_text),
             "chunk_count": 0,
             "created_at": time.time()
         }
@@ -198,37 +209,48 @@ class StorageService:
 
     def add_chunks(self, chunks: List[DocumentChunk]):
         """Saves chunks with embeddings to MongoDB Atlas and local memory."""
-        # Calculate embeddings for any chunks missing them
-        texts_to_embed = [c.content for c in chunks if not c.embedding]
-        active_dim = embedding_service.vector_dim
-        active_model = getattr(embedding_service, 'current_model_name', 'dense-embedding')
+        # Embed title + section + content so short passages retain document context.
+        missing_chunks = [c for c in chunks if not c.embedding]
+        enriched_texts = [
+            f"{c.doc_title} > {c.section or 'Overview'}\n{c.content}"
+            for c in missing_chunks
+        ]
 
-        if texts_to_embed:
-            new_embeddings = embedding_service.get_embeddings_batch(texts_to_embed)
-            embed_idx = 0
-            for c in chunks:
-                if not c.embedding:
-                    c.embedding = new_embeddings[embed_idx]
-                    c.embedding_dim = active_dim
-                    c.embedding_model = active_model
-                    embed_idx += 1
+        if enriched_texts:
+            new_embeddings = embedding_service.get_embeddings_batch(enriched_texts)
+            active_dim = embedding_service.vector_dim
+            active_model = embedding_service.current_model_name
+            for chunk, vector in zip(missing_chunks, new_embeddings):
+                chunk.embedding = vector
+                chunk.embedding_dim = active_dim
+                chunk.embedding_model = active_model
+        else:
+            active_dim = embedding_service.vector_dim
+            active_model = embedding_service.current_model_name
 
         for c in chunks:
-            c.embedding_dim = active_dim
-            c.embedding_model = active_model
+            if c.embedding is None:
+                raise RuntimeError(f"Chunk {c.id} has no embedding; refusing to index an incomplete vector.")
+            c.embedding_dim = len(c.embedding)
+            c.embedding_model = c.embedding_model or active_model
             self._chunks[c.id] = c
             if c.doc_id in self._documents:
                 self._documents[c.doc_id]["chunk_count"] += 1
 
         self._save_to_disk()
 
-        # Insert into MongoDB Atlas if live
+        # Idempotent Atlas upserts avoid duplicate-key failures on repeated uploads.
         if self.is_connected and self.collection is not None:
             try:
-                docs = [c.model_dump() for c in chunks]
-                self.collection.insert_many(docs)
+                from pymongo import UpdateOne
+                operations = [
+                    UpdateOne({"id": c.id}, {"$set": c.model_dump()}, upsert=True)
+                    for c in chunks
+                ]
+                if operations:
+                    self.collection.bulk_write(operations, ordered=False)
             except Exception as e:
-                print(f"[StorageService] Failed to insert chunks into Atlas: {e}")
+                raise RuntimeError(f"Failed to upsert chunks into Atlas: {e}") from e
 
     def delete_document(self, doc_id: str) -> bool:
         if doc_id in self._documents:
@@ -244,11 +266,119 @@ class StorageService:
             return True
         return False
 
+    def _load_documents_from_atlas(self) -> None:
+        if not (self.is_connected and self.db is not None):
+            return
+        try:
+            docs_collection = self.db["documents"]
+            projection = {"_id": 0}
+            for record in docs_collection.find({}, projection):
+                doc_id = record.get("id")
+                if doc_id:
+                    self._documents[doc_id] = record
+        except Exception as exc:
+            print(f"[StorageService] Could not load document records from Atlas: {exc}")
+
     def list_documents(self) -> List[Dict[str, Any]]:
+        if self.is_connected and not self._documents:
+            self._load_documents_from_atlas()
         return list(self._documents.values())
 
+    def search_labelled_fields(
+        self, field_key: str, filters: Optional[SearchFilters] = None
+    ) -> List[Dict[str, Any]]:
+        """Search extracted form fields directly, without relying on embedding similarity."""
+        records = dict(self._documents)
+        if self.is_connected and self.db is not None:
+            self._load_documents_from_atlas()
+            records.update(self._documents)
+
+        matches: List[Dict[str, Any]] = []
+        for doc_id, record in records.items():
+            if filters and filters.doc_ids and doc_id not in filters.doc_ids:
+                continue
+            metadata = record.get("metadata") or {}
+            if filters and filters.category and metadata.get("category") != filters.category:
+                continue
+            year = metadata.get("year")
+            if filters and filters.min_year and (year or 0) < filters.min_year:
+                continue
+            if filters and filters.max_year and (year or 9999) > filters.max_year:
+                continue
+
+            fields = record.get("extracted_fields")
+            if not isinstance(fields, list):
+                fields = extract_labelled_fields(record.get("raw_text", ""))
+                record["extracted_fields"] = fields
+
+            for item in fields:
+                if item.get("field_key") != field_key or not str(item.get("value", "")).strip():
+                    continue
+
+                source_line = str(item.get("source_line") or f"{item.get('label', field_key)}: {item.get('value')}")
+                section = str(item.get("section") or "Form fields")
+                page_number = int(item.get("page_number") or 1)
+                digest = hashlib.sha1(f"{doc_id}|{field_key}|{page_number}|{source_line}".encode("utf-8")).hexdigest()[:12]
+                chunk_id = f"fld_{digest}"
+
+                field_chunk = DocumentChunk(
+                    id=chunk_id,
+                    doc_id=doc_id,
+                    doc_title=record.get("title", "Untitled"),
+                    section=section,
+                    page_number=page_number,
+                    content=source_line,
+                    metadata={
+                        **metadata,
+                        "field_extraction": True,
+                        "field_key": field_key,
+                        "field_label": item.get("label", field_key),
+                    }
+                )
+                self._field_chunks[chunk_id] = field_chunk
+                citation = Citation(
+                    id=chunk_id,
+                    doc_id=doc_id,
+                    doc_title=record.get("title", "Untitled"),
+                    section=section,
+                    page_number=page_number,
+                    snippet=source_line,
+                    similarity_score=1.0,
+                    keyword_score=1.0,
+                    combined_score=1.0,
+                    metadata={
+                        **metadata,
+                        "field_extraction": True,
+                        "field_key": field_key,
+                        "field_label": item.get("label", field_key),
+                    }
+                )
+                matches.append({
+                    "field_key": field_key,
+                    "label": item.get("label", field_key),
+                    "value": str(item.get("value", "")).strip(),
+                    "source_line": source_line,
+                    "page_number": page_number,
+                    "doc_title": record.get("title", "Untitled"),
+                    "citation": citation,
+                })
+        return matches
+
     def get_chunk(self, chunk_id: str) -> Optional[DocumentChunk]:
-        return self._chunks.get(chunk_id)
+        if chunk_id in self._field_chunks:
+            return self._field_chunks[chunk_id]
+        chunk = self._chunks.get(chunk_id)
+        if chunk is not None:
+            return chunk
+        if self.is_connected and self.collection is not None:
+            try:
+                record = self.collection.find_one({"id": chunk_id})
+                if record:
+                    record.pop("_id", None)
+                    return DocumentChunk(**record)
+            except Exception as exc:
+                print(f"[StorageService] Atlas chunk lookup failed: {exc}")
+        return None
 
     def hybrid_search(
         self, 
