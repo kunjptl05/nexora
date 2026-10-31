@@ -130,8 +130,8 @@ class ConflictRadar:
                             sign = "+" if diff > 0 else ""
                             if "%" in (older["unit"] + newer["unit"]):
                                 delta_str = f"{sign}{diff:.1f}%"
-                            elif "$" in (older["unit"] + newer["unit"]):
-                                delta_str = f"{sign}${abs(diff):,.0f}" if diff < 0 else f"+${diff:,.0f}"
+                            elif older["normalized_unit"] in {"usd", "inr", "eur"}:
+                                delta_str = f"{sign}{diff:,.0f} {older['normalized_unit'].upper()}"
                             elif "year" in (older["unit"] + newer["unit"]):
                                 delta_str = f"{sign}{int(diff) if diff.is_integer() else diff:.1f} years"
                             elif "ms" in (older["unit"] + newer["unit"]):
