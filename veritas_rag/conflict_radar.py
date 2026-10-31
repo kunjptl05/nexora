@@ -180,7 +180,7 @@ class ConflictRadar:
             older_year, older_cit = sorted_docs[0]
             newer_year, newer_cit = sorted_docs[-1]
             if newer_year > older_year:
-                has_policy_change = any(re.search(rf"\\b{k}\\b", older_cit.snippet + " " + newer_cit.snippet, re.IGNORECASE) for k in keywords)
+                has_policy_change = any(re.search(rf"\b{k}\b", older_cit.snippet + " " + newer_cit.snippet, re.IGNORECASE) for k in keywords)
                 if has_policy_change:
                     findings.append(ConflictItem(
                         id=f"cnf_{uuid.uuid4().hex[:6]}",
