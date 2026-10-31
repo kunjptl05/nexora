@@ -38,7 +38,7 @@ class GroundedAnswerTests(unittest.TestCase):
         self.assertIn("battery chemistries", answer)
         self.assertIn("does not provide a physical component breakdown", answer)
         self.assertIn("Verbatim evidence from your documents", answer)
-        self.assertIn("Page 2", answer)
+        self.assertIn("p.2", answer)
         self.assertNotIn("- **anode**", answer)
         self.assertNotIn("- **cathode**", answer)
         self.assertNotIn("- **electrolyte**", answer)
@@ -131,7 +131,7 @@ class GroundedAnswerTests(unittest.TestCase):
             "What are the components of the battery?", [citation("LFP and sodium-ion battery chemistries.")], []
         )
         self.assertIn("Enumerate every distinct item explicitly named", prompt)
-        self.assertIn("not internal cell components", prompt)
+        self.assertIn("not internal components", prompt)
         self.assertIn("Do not supply a generic textbook list", prompt)
 
 
