@@ -141,6 +141,15 @@ function initWorkspacePanels() {
   if (!workspace || workspace.dataset.panelsReady === 'true') return;
   workspace.dataset.panelsReady = 'true';
 
+  if (window.innerWidth <= 680) {
+    workspacePanelState.documents.width = 190;
+    workspacePanelState.evidence.width = 280;
+    workspacePanelState.evidence.open = false;
+  } else if (window.innerWidth <= 900) {
+    workspacePanelState.documents.width = 220;
+    workspacePanelState.evidence.width = 300;
+  }
+
   const docsHandle = document.getElementById('resize-documents');
   const evidenceHandle = document.getElementById('resize-evidence');
 
@@ -219,6 +228,7 @@ function renderWorkspacePanels() {
     if (!element) return;
     element.classList.toggle('is-collapsed', !open);
     element.setAttribute('aria-hidden', String(!open));
+    element.inert = !open;
   };
 
   setPanel(docPanel, docs.open);
