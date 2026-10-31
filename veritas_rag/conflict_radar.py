@@ -31,6 +31,14 @@ class ConflictRadar:
         }
         return aliases.get(raw, raw)
 
+    def _sentence_for_term(self, text: str, term: str) -> str:
+        sentences = re.split(r'(?<=[.!?;])\s+|\n+', text)
+        return next(
+            (sentence for sentence in sentences
+             if re.search(rf'\b{re.escape(term)}\b', sentence, re.IGNORECASE)),
+            text
+        )
+
     def detect_conflicts(self, citations: List[Citation], query: str) -> List[ConflictItem]:
         if len(citations) < 2:
             return []
