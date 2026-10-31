@@ -31,7 +31,7 @@ _ALL_LABELS = sorted(
     reverse=True
 )
 _LABEL_PATTERN = re.compile(
-    r"(?P<label>" + "|".join(re.escape(label) for label in _ALL_LABELS) + r")\s*[:：]\s*",
+    r"(?<![A-Za-z0-9])(?P<label>" + "|".join(re.escape(label) for label in _ALL_LABELS) + r")(?![A-Za-z0-9])\s*[:：]\s*",
     re.IGNORECASE
 )
 
@@ -97,6 +97,15 @@ def extract_labelled_fields(text: str) -> List[Dict[str, object]]:
             if not lookup:
                 continue
             field_key, display_label = lookup
+
+            # A bare "Name" label is only a person-name field when it starts
+            # the line/column or is explicitly qualified by candidate/applicant/student.
+            # This avoids treating "Bank Name:" as the candidate's name.
+            if normalized == "name":
+                prefix = line[:match.start()].strip().casefold()
+                if prefix not in {"", "candidate", "applicant", "student"}:
+                    continue
+
             value_start = match.end()
             value_end = matches[index + 1].start() if index + 1 < len(matches) else len(line)
             value = line[value_start:value_end].strip(" \t:：-–—")
