@@ -133,7 +133,12 @@ class StorageService:
         return len(self._chunks)
 
     def count_documents(self) -> int:
-        """Returns total document count."""
+        """Returns total document count across the active storage backend."""
+        if self.is_connected and self.db is not None:
+            try:
+                return self.db["documents"].count_documents({})
+            except Exception as exc:
+                print(f"[StorageService] Atlas document count failed: {exc}")
         return len(self._documents)
 
     def reset(self):
@@ -276,18 +281,23 @@ class StorageService:
                 raise RuntimeError(f"Failed to upsert chunks into Atlas: {e}") from e
 
     def delete_document(self, doc_id: str) -> bool:
-        if doc_id in self._documents:
-            del self._documents[doc_id]
-            # Delete corresponding chunks
-            self._chunks = {cid: c for cid, c in self._chunks.items() if c.doc_id != doc_id}
-            self._save_to_disk()
-            if self.is_connected and self.collection is not None:
-                try:
-                    self.collection.delete_many({"doc_id": doc_id})
-                except Exception as e:
-                    print(f"[StorageService] Failed to delete document from Atlas: {e}")
-            return True
-        return False
+        if doc_id not in self._documents and self.is_connected and self.db is not None:
+            self._load_documents_from_atlas()
+        if doc_id not in self._documents:
+            return False
+
+        del self._documents[doc_id]
+        self._chunks = {cid: c for cid, c in self._chunks.items() if c.doc_id != doc_id}
+        self._field_chunks = {cid: c for cid, c in self._field_chunks.items() if c.doc_id != doc_id}
+        self._save_to_disk()
+
+        if self.is_connected and self.db is not None:
+            try:
+                self.collection.delete_many({"doc_id": doc_id})
+                self.db["documents"].delete_one({"id": doc_id})
+            except Exception as exc:
+                print(f"[StorageService] Failed to delete document from Atlas: {exc}")
+        return True
 
     def _load_documents_from_atlas(self) -> None:
         if not (self.is_connected and self.db is not None):
