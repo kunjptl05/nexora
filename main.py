@@ -332,7 +332,8 @@ def query_rag(req: QueryRequest):
         question=req.question,
         citations=citations,
         explain_search=explain_search,
-        answer_mode=req.answer_mode
+        answer_mode=req.answer_mode,
+        temperature=req.temperature
     )
     # Store in server-side query history for authentic report generation
     storage_service.store_query_result(response.query_id, response)
