@@ -9,7 +9,8 @@ class EmbeddingService:
     def __init__(self):
         self._client = None
         self._api_key = config.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-        self.vector_dim = 768 if self._api_key else 128
+        self.vector_dim = 128
+        self.current_model_name = "local-hash-projection"
 
     def configure_key(self, api_key: str):
         self._api_key = api_key
@@ -37,11 +38,15 @@ class EmbeddingService:
                     contents=text
                 )
                 if response.embeddings and len(response.embeddings) > 0:
-                    vec = response.embeddings[0].values
-                    return self._normalize(vec)
+                    vec = self._normalize(response.embeddings[0].values)
+                    self.vector_dim = len(vec)
+                    self.current_model_name = config.embedding_model
+                    return vec
             except Exception as e:
                 print(f"[EmbeddingService] Gemini embedding call failed, falling back to local semantic encoder: {e}")
-        
+
+        self.vector_dim = 128
+        self.current_model_name = "local-hash-projection"
         return self._local_semantic_embedding(text)
 
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
@@ -55,10 +60,18 @@ class EmbeddingService:
                     contents=texts
                 )
                 if response.embeddings and len(response.embeddings) == len(texts):
-                    return [self._normalize(emb.values) for emb in response.embeddings]
+                    vectors = [self._normalize(emb.values) for emb in response.embeddings]
+                    dimensions = {len(vector) for vector in vectors}
+                    if len(dimensions) != 1:
+                        raise ValueError(f"Embedding provider returned inconsistent dimensions: {sorted(dimensions)}")
+                    self.vector_dim = dimensions.pop()
+                    self.current_model_name = config.embedding_model
+                    return vectors
             except Exception as e:
                 print(f"[EmbeddingService] Batch Gemini embedding failed: {e}")
 
+        self.vector_dim = 128
+        self.current_model_name = "local-hash-projection"
         return [self._local_semantic_embedding(t) for t in texts]
 
     def _normalize(self, vec: List[float]) -> List[float]:

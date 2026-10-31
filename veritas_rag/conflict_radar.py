@@ -19,6 +19,26 @@ class ConflictRadar:
             return "software_auth"
         return "general"
 
+    def _normalize_unit(self, currency: str, unit: str) -> str:
+        raw = (currency or unit or "").strip().lower()
+        aliases = {
+            "%": "percent", "percent": "percent", "percentage": "percent",
+            "year": "years", "years": "years", "yr": "years", "yrs": "years",
+            "month": "months", "months": "months", "day": "days", "days": "days",
+            "second": "seconds", "seconds": "seconds", "sec": "seconds", "s": "seconds",
+            "usd": "usd", "$": "usd", "inr": "inr", "₹": "inr", "eur": "eur", "€": "eur",
+            "ms": "ms", "kw": "kw", "kwh": "kwh", "gb": "gb", "mb": "mb"
+        }
+        return aliases.get(raw, raw)
+
+    def _sentence_for_term(self, text: str, term: str) -> str:
+        sentences = re.split(r'(?<=[.!?;])\s+|\n+', text)
+        return next(
+            (sentence for sentence in sentences
+             if re.search(rf'\b{re.escape(term)}\b', sentence, re.IGNORECASE)),
+            text
+        )
+
     def detect_conflicts(self, citations: List[Citation], query: str) -> List[ConflictItem]:
         if len(citations) < 2:
             return []
@@ -85,11 +105,12 @@ class ConflictRadar:
                         "display_val": display_val,
                         "numeric_val": numeric_val,
                         "unit": unit_clean,
+                        "normalized_unit": self._normalize_unit(currency, unit),
                         "doc_title": cit.doc_title,
                         "doc_id": cit.doc_id,
                         "section": cit.section or "Section",
                         "page": cit.page_number,
-                        "year": cit.metadata.get("year", 2025)
+                        "year": cit.metadata.get("year")
                     })
 
         # Compare pairs across different documents within the same semantic domain
@@ -97,24 +118,29 @@ class ConflictRadar:
             for j in range(i + 1, len(extracted)):
                 e1 = extracted[i]
                 e2 = extracted[j]
-                if e1["doc_id"] != e2["doc_id"] and e1["metric"] == e2["metric"] and e1["domain"] == e2["domain"]:
+                units_match = e1["normalized_unit"] == e2["normalized_unit"]
+                if (e1["doc_id"] != e2["doc_id"]
+                        and e1["metric"] == e2["metric"]
+                        and e1["domain"] == e2["domain"]
+                        and units_match):
                     if e1["display_val"] != e2["display_val"]:
                         # Calculate quantitative delta if both numeric
                         delta_str = None
                         if e1["numeric_val"] is not None and e2["numeric_val"] is not None:
                             # Order by year/revision if available
-                            if e2["year"] >= e1["year"]:
-                                diff = e2["numeric_val"] - e1["numeric_val"]
-                                older, newer = e1, e2
-                            else:
+                            if (e1["year"] is not None and e2["year"] is not None
+                                    and e2["year"] < e1["year"]):
                                 diff = e1["numeric_val"] - e2["numeric_val"]
                                 older, newer = e2, e1
+                            else:
+                                diff = e2["numeric_val"] - e1["numeric_val"]
+                                older, newer = e1, e2
                             
                             sign = "+" if diff > 0 else ""
                             if "%" in (older["unit"] + newer["unit"]):
                                 delta_str = f"{sign}{diff:.1f}%"
-                            elif "$" in (older["unit"] + newer["unit"]):
-                                delta_str = f"{sign}${abs(diff):,.0f}" if diff < 0 else f"+${diff:,.0f}"
+                            elif older["normalized_unit"] in {"usd", "inr", "eur"}:
+                                delta_str = f"{sign}{diff:,.0f} {older['normalized_unit'].upper()}"
                             elif "year" in (older["unit"] + newer["unit"]):
                                 delta_str = f"{sign}{int(diff) if diff.is_integer() else diff:.1f} years"
                             elif "ms" in (older["unit"] + newer["unit"]):
@@ -146,7 +172,7 @@ class ConflictRadar:
 
     def _check_policy_revisions(self, citations: List[Citation]) -> List[ConflictItem]:
         findings = []
-        keywords = ["eligible", "approved", "supersedes", "revoked", "replaced", "updated", "deprecated"]
+        keywords = ["supersedes", "superseded", "replaces", "replaced", "revokes", "revoked", "repeals", "repealed", "amends", "amended"]
         
         doc_years = {}
         for c in citations:
@@ -163,7 +189,7 @@ class ConflictRadar:
             older_year, older_cit = sorted_docs[0]
             newer_year, newer_cit = sorted_docs[-1]
             if newer_year > older_year:
-                has_policy_change = any(k in older_cit.snippet.lower() or k in newer_cit.snippet.lower() for k in keywords)
+                has_policy_change = any(re.search(rf"\b{k}\b", older_cit.snippet + " " + newer_cit.snippet, re.IGNORECASE) for k in keywords)
                 if has_policy_change:
                     findings.append(ConflictItem(
                         id=f"cnf_{uuid.uuid4().hex[:6]}",
@@ -192,29 +218,51 @@ class ConflictRadar:
             ("permitted", "forbidden"),
             ("deprecated", "supported")
         ]
+        generic_terms = {
+            "this", "that", "with", "from", "shall", "must", "will", "not",
+            "when", "then", "than", "they", "their", "these", "those",
+            "policy", "standard", "rule", "requirement", "document", "section"
+        }
 
         for word_a, word_b in polar_pairs:
-            matches_a = [c for c in citations if re.search(rf'\b{word_a}\b', c.snippet, re.IGNORECASE)]
-            matches_b = [c for c in citations if re.search(rf'\b{word_b}\b', c.snippet, re.IGNORECASE)]
+            matches_a = [
+                (citation, self._sentence_for_term(citation.snippet, word_a))
+                for citation in citations
+                if re.search(rf'\b{word_a}\b', citation.snippet, re.IGNORECASE)
+            ]
+            matches_b = [
+                (citation, self._sentence_for_term(citation.snippet, word_b))
+                for citation in citations
+                if re.search(rf'\b{word_b}\b', citation.snippet, re.IGNORECASE)
+            ]
 
-            for ca in matches_a:
-                for cb in matches_b:
-                    if ca.doc_id != cb.doc_id:
-                        findings.append(ConflictItem(
-                            id=f"cnf_{uuid.uuid4().hex[:6]}",
-                            subject=f"Rule Contradiction: '{word_a}' vs '{word_b}'",
-                            claim_a=f"Condition specified as '{word_a}' in {ca.doc_title}",
-                            source_a=f"{ca.doc_title} [{ca.section}]",
-                            value_a=word_a.upper(),
-                            claim_b=f"Condition specified as '{word_b}' in {cb.doc_title}",
-                            source_b=f"{cb.doc_title} [{cb.section}]",
-                            value_b=word_b.upper(),
-                            delta="Direct Inversion",
-                            condition="Status Polar Discrepancy",
-                            discrepancy_type="contradictory",
-                            severity="high",
-                            explanation=f"One document defines the requirement as {word_a.upper()} while another treats it as {word_b.upper()}."
-                        ))
+            for ca, sentence_a in matches_a:
+                for cb, sentence_b in matches_b:
+                    if ca.doc_id == cb.doc_id:
+                        continue
+                    anchors_a = set(re.findall(r'\b[a-z]{4,}\b', sentence_a.lower())) - generic_terms - {word_a, word_b}
+                    anchors_b = set(re.findall(r'\b[a-z]{4,}\b', sentence_b.lower())) - generic_terms - {word_a, word_b}
+                    if not anchors_a.intersection(anchors_b):
+                        continue
+
+                    findings.append(ConflictItem(
+                        id=f"cnf_{uuid.uuid4().hex[:6]}",
+                        subject=f"Possible rule difference: '{word_a}' vs '{word_b}'",
+                        claim_a=f"{sentence_a.strip()}",
+                        source_a=f"{ca.doc_title} [{ca.section}]",
+                        value_a=word_a.upper(),
+                        claim_b=f"{sentence_b.strip()}",
+                        source_b=f"{cb.doc_title} [{cb.section}]",
+                        value_b=word_b.upper(),
+                        delta="Review required",
+                        condition="Shared subject terms found in both passages",
+                        discrepancy_type="contradictory",
+                        severity="medium",
+                        explanation=(
+                            f"The passages use opposite terms ({word_a.upper()} and {word_b.upper()}) "
+                            "and share subject wording. Verify that their scope, date, and conditions match."
+                        )
+                    ))
 
         return findings
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexora — Autonomous Document Intelligence & Evidence Verification</title>
+  <title>Nexora — Evidence-first Document Intelligence</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -123,7 +123,7 @@
         </div>
         <div class="flex items-center justify-between text-[10px] text-emerald-300/70 font-semibold">
           <span id="sidebarDocStats">5 docs · 20 chunks</span>
-          <span class="text-emerald-300 font-mono">Zero Hallucination</span>
+          <span class="text-emerald-300 font-mono">Evidence-backed answers</span>
         </div>
       </div>
     </div>
@@ -242,7 +242,7 @@
                     <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold text-[10px] border border-emerald-200">Document Intelligence Platform</span>
                   </div>
                   <p class="text-xs text-stone-600 leading-relaxed mb-4">
-                    Nexora synthesizes complex multi-document collections into factual, cited answers. It autonomously detects contradicting claims across versions, traces exact passages, and enforces an automated hallucination guardrail.
+                    Nexora helps you search across multiple documents, compare potentially conflicting claims, and trace answers back to the passages that support them. When the indexed sources do not provide enough evidence, Nexora flags the limitation instead of presenting an unsupported answer.
                   </p>
                   
                   <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
@@ -250,19 +250,19 @@
                       <div class="font-bold text-[#0F3E33] mb-1 flex items-center gap-1.5">
                         <i data-lucide="git-compare" class="w-4 h-4 text-[#E07A5F]"></i> Conflict Radar
                       </div>
-                      <p class="text-[11px] text-stone-500 leading-normal">Catches opposing metrics and policy revisions, computing quantitative deltas (e.g., <code class="text-emerald-800 font-bold">+4% efficiency</code>).</p>
+                      <p class="text-[11px] text-stone-500 leading-normal">Highlights potentially conflicting values and policy statements across sources, with passages to help you verify the differences.</p>
                     </div>
                     <div class="p-3.5 rounded-xl bg-[#F7F9F8] border border-stone-200">
                       <div class="font-bold text-[#0F3E33] mb-1 flex items-center gap-1.5">
                         <i data-lucide="link" class="w-4 h-4 text-emerald-700"></i> Clickable Citations
                       </div>
-                      <p class="text-[11px] text-stone-500 leading-normal">Every assertion links directly to exact source passages in the right-hand Evidence Inspector.</p>
+                      <p class="text-[11px] text-stone-500 leading-normal">Inspect retrieved source passages, document names and page references used to support an answer.</p>
                     </div>
                     <div class="p-3.5 rounded-xl bg-[#F7F9F8] border border-stone-200">
                       <div class="font-bold text-[#0F3E33] mb-1 flex items-center gap-1.5">
                         <i data-lucide="shield-alert" class="w-4 h-4 text-[#E07A5F]"></i> Safe Abstention
                       </div>
-                      <p class="text-[11px] text-stone-500 leading-normal">Refuses to hallucinate when indexed documents do not contain corroborated evidence.</p>
+                      <p class="text-[11px] text-stone-500 leading-normal">Flags questions that lack sufficient support in the indexed documents and explains the evidence gap.</p>
                     </div>
                   </div>
 
@@ -438,9 +438,9 @@
               <span class="text-[10px] text-stone-500 font-semibold">Statutory Supersession</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
-              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Radar Precision</span>
-              <div class="text-2xl font-extrabold text-emerald-800 mt-1">100%</div>
-              <span class="text-[10px] text-stone-500 font-semibold">Domain-Grounded Checks</span>
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Analysis Status</span>
+              <div class="text-xl font-extrabold text-emerald-800 mt-1">Evidence review</div>
+              <span class="text-[10px] text-stone-500 font-semibold">Review flagged differences</span>
             </div>
           </div>
 
@@ -462,7 +462,7 @@
                 <i data-lucide="bar-chart-2" class="w-5 h-5 text-emerald-700"></i>
                 <span>Retrieval Ablation & Evaluation Suite</span>
               </h2>
-              <p class="text-xs text-stone-500">Compares Dense Vector Only vs. Lexical (BM25) Only vs. Hybrid RRF Fusion across standard benchmark queries.</p>
+              <p class="text-xs text-stone-500">Compares dense vector retrieval, BM25 lexical retrieval and hybrid RRF fusion on the current evaluation set.</p>
             </div>
 
             <div class="flex items-center gap-2">
@@ -489,11 +489,11 @@
                 <div class="grid grid-cols-2 gap-2 mt-2">
                   <div>
                     <span class="text-[10px] text-stone-500">Hit Rate @ 3</span>
-                    <div id="ablationDenseHit" class="text-xl font-extrabold text-stone-900">80.0%</div>
+                    <div id="ablationDenseHit" class="text-xl font-extrabold text-stone-900">—</div>
                   </div>
                   <div>
                     <span class="text-[10px] text-stone-500">MRR</span>
-                    <div id="ablationDenseMRR" class="text-xl font-extrabold text-stone-900">0.73</div>
+                    <div id="ablationDenseMRR" class="text-xl font-extrabold text-stone-900">—</div>
                   </div>
                 </div>
               </div>
@@ -502,16 +502,16 @@
               <div class="p-4 rounded-xl bg-[#F7F9F8] border border-stone-200">
                 <div class="flex items-center justify-between mb-2">
                   <span class="text-xs font-bold text-stone-800">Lexical BM25 Only</span>
-                  <span class="px-2 py-0.5 rounded bg-stone-200 text-[10px] font-mono font-bold text-stone-700">Token Match</span>
+                  <span class="px-2 py-0.5 rounded bg-stone-200 text-[10px] font-mono font-bold text-stone-700">BM25</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-2">
                   <div>
                     <span class="text-[10px] text-stone-500">Hit Rate @ 3</span>
-                    <div id="ablationLexicalHit" class="text-xl font-extrabold text-stone-900">80.0%</div>
+                    <div id="ablationLexicalHit" class="text-xl font-extrabold text-stone-900">—</div>
                   </div>
                   <div>
                     <span class="text-[10px] text-stone-500">MRR</span>
-                    <div id="ablationLexicalMRR" class="text-xl font-extrabold text-stone-900">0.70</div>
+                    <div id="ablationLexicalMRR" class="text-xl font-extrabold text-stone-900">—</div>
                   </div>
                 </div>
               </div>
@@ -523,16 +523,16 @@
                     <i data-lucide="award" class="w-3.5 h-3.5 text-emerald-700"></i>
                     <span>Hybrid (RRF Fusion)</span>
                   </span>
-                  <span class="px-2 py-0.5 rounded bg-emerald-200 text-[10px] font-mono font-bold text-emerald-900">Best Performance</span>
+                  <span class="px-2 py-0.5 rounded bg-emerald-200 text-[10px] font-mono font-bold text-emerald-900">RRF combination</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-2">
                   <div>
                     <span class="text-[10px] text-emerald-800 font-semibold">Hit Rate @ 3</span>
-                    <div id="ablationHybridHit" class="text-xl font-extrabold text-emerald-950">100.0%</div>
+                    <div id="ablationHybridHit" class="text-xl font-extrabold text-emerald-950">—</div>
                   </div>
                   <div>
                     <span class="text-[10px] text-emerald-800 font-semibold">MRR</span>
-                    <div id="ablationHybridMRR" class="text-xl font-extrabold text-emerald-950">1.00</div>
+                    <div id="ablationHybridMRR" class="text-xl font-extrabold text-emerald-950">—</div>
                   </div>
                 </div>
               </div>
@@ -543,32 +543,32 @@
           <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Hybrid Hit @ 3</span>
-              <div id="evalHitRate" class="text-2xl font-extrabold text-emerald-900 mt-1">100%</div>
+              <div id="evalHitRate" class="text-2xl font-extrabold text-emerald-900 mt-1">—</div>
               <span class="text-[10px] text-stone-500 font-semibold">Source in top-3</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Hybrid MRR</span>
-              <div id="evalMRR" class="text-2xl font-extrabold text-stone-900 mt-1">1.00</div>
+              <div id="evalMRR" class="text-2xl font-extrabold text-stone-900 mt-1">—</div>
               <span class="text-[10px] text-stone-500 font-semibold">Mean Reciprocal Rank</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Precision @ 3</span>
-              <div id="evalPrecision" class="text-2xl font-extrabold text-stone-900 mt-1">1.00</div>
+              <div id="evalPrecision" class="text-2xl font-extrabold text-stone-900 mt-1">—</div>
               <span class="text-[10px] text-stone-500 font-semibold">Relevant density</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Conflict Accuracy</span>
-              <div id="evalConflictAcc" class="text-2xl font-extrabold text-[#E07A5F] mt-1">100%</div>
+              <div id="evalConflictAcc" class="text-2xl font-extrabold text-[#E07A5F] mt-1">—</div>
               <span class="text-[10px] text-stone-500 font-semibold">Discrepancies caught</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Abstention Fidelity</span>
-              <div id="evalAbstentionAcc" class="text-2xl font-extrabold text-emerald-900 mt-1">100%</div>
-              <span class="text-[10px] text-stone-500 font-semibold">Zero hallucination</span>
+              <div id="evalAbstentionAcc" class="text-2xl font-extrabold text-emerald-900 mt-1">—</div>
+              <span class="text-[10px] text-stone-500 font-semibold">Correct abstentions on test set</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Avg Latency</span>
-              <div id="evalLatency" class="text-2xl font-extrabold text-stone-800 mt-1">2 ms</div>
+              <div id="evalLatency" class="text-2xl font-extrabold text-stone-800 mt-1">—</div>
               <span class="text-[10px] text-stone-500 font-semibold">Execution speed</span>
             </div>
           </div>
@@ -577,7 +577,7 @@
           <div class="forest-surface rounded-2xl overflow-hidden shadow-xs">
             <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between bg-white">
               <h3 class="text-xs font-extrabold text-stone-900 uppercase tracking-wider">Ground-Truth Evaluation Matrix</h3>
-              <span class="text-xs text-stone-500 font-semibold">5 Verification Benchmarks</span>
+              <span class="text-xs text-stone-500 font-semibold">Sample evaluation set · 5 cases</span>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-left text-xs text-stone-700">
@@ -726,7 +726,7 @@
                   </div>
                   <div class="flex items-center gap-3">
                     <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-950 font-bold border border-emerald-300">5. Synthesis & Trace</span>
-                    <span class="text-stone-700">Zero-Hallucination Safe Abstention + Full $vectorSearch Retrieval Trace</span>
+                    <span class="text-stone-700">Evidence-aware abstention signals + retrieval trace</span>
                   </div>
                 </div>
               </div>

@@ -46,10 +46,10 @@ allowed_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # 1. System Status & Health
@@ -59,7 +59,7 @@ def get_status():
         "app_name": config.app_name,
         "tagline": config.tagline,
         "version": config.version,
-        "mongodb_headline": "MongoDB Atlas Vector Search: connected" if storage_service.is_connected else "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)",
+        "mongodb_headline": "MongoDB Atlas Vector Search: connected" if storage_service.is_connected else "Local Vector + BM25 (Persistent Local Store)",
         "storage_mode": storage_service.active_mode,
         "mongodb_connected": storage_service.is_connected,
         "mongodb_database": config.mongodb_database,
@@ -82,7 +82,7 @@ def update_mongodb(data: dict):
 
     if not uri:
         storage_service.is_connected = False
-        storage_service.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+        storage_service.active_mode = "Local Vector + BM25 (Persistent Local Store)"
         return {"success": True, "mode": storage_service.active_mode, "message": "Reverted to Local In-Memory Fallback Mode."}
 
     config.mongodb_uri = uri
@@ -211,23 +211,24 @@ def reset_documents(confirm: bool = Form(False)):
 # 4. Report Export Endpoint (Server-Side Verified)
 @app.post("/api/export/report")
 def export_report(req: ReportExportRequest):
+    if req.format.lower() not in {"markdown", "json"}:
+        raise HTTPException(status_code=400, detail="Supported report formats are markdown and json.")
+
     cached = storage_service.get_query_result(req.query_id)
-    
-    if cached:
-        query_text = cached.question
-        answer_text = cached.answer
-        grounded_score = cached.groundedness_score
-        abstained = cached.abstained
-        conflicts_list = cached.conflicts
-        citations_list = cached.citations
-    else:
-        # Fallback to request payload if provided
-        query_text = req.query or "Custom Investigation"
-        answer_text = req.answer or "No answer provided."
-        grounded_score = req.groundedness_score or 0.0
-        abstained = False
-        conflicts_list = req.conflicts or []
-        citations_list = req.citations or []
+    if cached is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Query result not found or expired. Run the query again before exporting its report."
+        )
+
+    # Rebuild report content from server-held query results only.
+    # Client-provided answer/citation fields are intentionally ignored.
+    query_text = cached.question
+    answer_text = cached.answer
+    grounded_score = cached.groundedness_score
+    abstained = cached.abstained
+    conflicts_list = cached.conflicts
+    citations_list = cached.citations
 
     # Conditional honesty grading - strictly no blanket overclaiming
     if abstained:

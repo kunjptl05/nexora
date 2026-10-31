@@ -4,6 +4,7 @@ import re
 import os
 import json
 import hashlib
+from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
 from veritas_rag.models import DocumentChunk, SearchFilters, Citation, QueryResponse
 from veritas_rag.config import config
@@ -15,7 +16,7 @@ class StorageService:
         self.db = None
         self.collection = None
         self.is_connected = False
-        self.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+        self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
         self._data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_store.json")
         
         # In-memory storage for zero-config fallback & benchmarking
@@ -71,7 +72,7 @@ class StorageService:
         """Attempts connection to MongoDB Atlas Vector Search."""
         if not uri:
             self.is_connected = False
-            self.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+            self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
             return False, "No MongoDB URI provided. Running on Local Fallback Engine."
 
         try:
@@ -101,7 +102,7 @@ class StorageService:
             return True, "Successfully connected to MongoDB Atlas Vector Search!"
         except Exception as e:
             self.is_connected = False
-            self.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+            self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
             return False, f"Could not connect to MongoDB Atlas ({str(e)}). Active in Local In-Memory Fallback Mode."
 
     def count_chunks(self) -> int:
@@ -293,7 +294,7 @@ class StorageService:
         ]
 
         explain_plan = {
-            "headline": "MongoDB Atlas Vector Search: connected" if self.is_connected else "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)",
+            "headline": "MongoDB Atlas Vector Search: connected" if self.is_connected else "Local Vector + BM25 (Persistent Local Store)",
             "mode": self.active_mode,
             "search_mode": search_mode,
             "query": query,
@@ -310,10 +311,10 @@ class StorageService:
         search_start = time.perf_counter()
 
         # 1. MongoDB Atlas Path (if live)
-        if self.is_connected and self.collection is not None and search_mode != "lexical":
+        if self.is_connected and self.collection is not None:
             try:
                 citations, mongo_explain = self._search_mongodb_atlas(
-                    query, query_embedding, filters, top_k, use_hybrid
+                    query, query_embedding, filters, top_k, use_hybrid, search_mode
                 )
                 search_time = (time.perf_counter() - search_start) * 1000
                 total_time = (time.perf_counter() - start_time) * 1000
@@ -328,7 +329,7 @@ class StorageService:
                 explain_plan["atlas_error"] = str(e)
                 print(f"[StorageService] Atlas search error, using local fallback: {e}")
 
-        # 2. Local In-Memory Hybrid Search
+        # 2. Local Hybrid Search
         citations, trace_details = self._search_local_hybrid_traced(
             query, query_embedding, filters, top_k, use_hybrid, search_mode
         )
@@ -379,17 +380,38 @@ class StorageService:
             vector_ranked.append((chunk, sim))
         vector_ranked.sort(key=lambda x: x[1], reverse=True)
 
-        # Keyword / BM25 token overlap scores
-        keyword_ranked = []
+        # BM25 lexical ranking (k1=1.5, b=0.75), using term and document frequencies.
+        query_terms = set(query_words)
+        tokenized_docs: Dict[str, List[str]] = {}
+        document_frequency = Counter()
         for chunk in candidates:
             searchable_text = f"{chunk.doc_title} {chunk.section or ''} {chunk.content}".lower()
-            chunk_words = set(re.findall(r'\b[a-z0-9]+\b', searchable_text)) - stopwords
-            if not chunk_words:
-                kw_score = 0.0
-            else:
-                matches = sum(1 for w in query_words if w in chunk_words)
-                kw_score = matches / len(query_words)
-            keyword_ranked.append((chunk, kw_score))
+            tokens = [w for w in re.findall(r'\b[a-z0-9]+\b', searchable_text) if w not in stopwords]
+            tokenized_docs[chunk.id] = tokens
+            for term in query_terms.intersection(set(tokens)):
+                document_frequency[term] += 1
+
+        corpus_size = len(candidates)
+        average_doc_length = (
+            sum(len(tokens) for tokens in tokenized_docs.values()) / corpus_size
+            if corpus_size else 0.0
+        )
+        k1, b = 1.5, 0.75
+        keyword_ranked = []
+        for chunk in candidates:
+            tokens = tokenized_docs[chunk.id]
+            frequencies = Counter(tokens)
+            doc_length = len(tokens)
+            score = 0.0
+            for term in query_terms:
+                term_frequency = frequencies.get(term, 0)
+                if not term_frequency:
+                    continue
+                doc_freq = document_frequency.get(term, 0)
+                idf = math.log(1.0 + (corpus_size - doc_freq + 0.5) / (doc_freq + 0.5))
+                length_norm = k1 * (1.0 - b + b * doc_length / average_doc_length) if average_doc_length else k1
+                score += idf * (term_frequency * (k1 + 1.0) / (term_frequency + length_norm))
+            keyword_ranked.append((chunk, score))
         keyword_ranked.sort(key=lambda x: x[1], reverse=True)
 
         # Build Pre-RRF candidate trace
@@ -478,12 +500,51 @@ class StorageService:
         query_embedding: List[float],
         filters: Optional[SearchFilters],
         top_k: int,
-        use_hybrid: bool
+        use_hybrid: bool,
+        search_mode: str = "hybrid"
     ) -> Tuple[List[Citation], List[Dict[str, Any]]]:
         mongo_filter = self._build_mongo_filter(filters)
 
-        # Use $rankFusion (MongoDB 8.0+ GA since June 30 2026) for native hybrid search.
-        # Falls back to plain $vectorSearch for older clusters.
+        if search_mode == "dense":
+            pipeline = [
+                {"$vectorSearch": {
+                    "index": config.vector_index_name,
+                    "path": "embedding",
+                    "queryVector": query_embedding,
+                    "numCandidates": top_k * 10,
+                    "limit": top_k,
+                    **({"filter": mongo_filter} if mongo_filter else {})
+                }},
+                {"$project": {
+                    "id": 1, "doc_id": 1, "doc_title": 1, "section": 1,
+                    "page_number": 1, "content": 1, "metadata": 1,
+                    "score": {"$meta": "vectorSearchScore"}
+                }}
+            ]
+            cursor = self.collection.aggregate(pipeline)
+            return [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor], pipeline
+
+        if search_mode == "lexical":
+            pipeline = [{
+                "$search": {
+                    "index": "chunk_text",
+                    "text": {"query": query, "path": ["content", "doc_title", "section"]}
+                }
+            }]
+            if mongo_filter:
+                pipeline.append({"$match": mongo_filter})
+            pipeline.extend([
+                {"$limit": top_k},
+                {"$project": {
+                    "id": 1, "doc_id": 1, "doc_title": 1, "section": 1,
+                    "page_number": 1, "content": 1, "metadata": 1,
+                    "score": {"$meta": "searchScore"}
+                }}
+            ])
+            cursor = self.collection.aggregate(pipeline)
+            return [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor], pipeline
+
+        # Use MongoDB $rankFusion for hybrid retrieval.
         try:
             vector_sub = {
                 "$vectorSearch": {
@@ -570,57 +631,22 @@ class StorageService:
             return results, pipeline
 
         except Exception as rank_fusion_err:
-            # Cluster does not support $rankFusion; fall back to plain $vectorSearch
-            print(f"[StorageService] $rankFusion unavailable ({rank_fusion_err}), falling back to $vectorSearch")
+            raise RuntimeError(
+                f"Atlas hybrid $rankFusion unavailable; using local hybrid fallback: {rank_fusion_err}"
+            ) from rank_fusion_err
 
-            plain_pipeline = [
-                {
-                    "$vectorSearch": {
-                        "index": config.vector_index_name,
-                        "path": "embedding",
-                        "queryVector": query_embedding,
-                        "numCandidates": top_k * 10,
-                        "limit": top_k,
-                    }
-                },
-                {
-                    "$project": {
-                        "id": 1,
-                        "doc_id": 1,
-                        "doc_title": 1,
-                        "section": 1,
-                        "page_number": 1,
-                        "content": 1,
-                        "metadata": 1,
-                        "score": {"$meta": "vectorSearchScore"}
-                    }
-                }
-            ]
-            if mongo_filter:
-                plain_pipeline[0]["$vectorSearch"]["filter"] = mongo_filter  # type: ignore[index]
-
-            cursor = self.collection.aggregate(plain_pipeline)
-            results = []
-            for doc in cursor:
-                score = doc.get("score", 0.0)
-                cit = Citation(
-                    id=doc.get("id", str(doc.get("_id"))),
-                    doc_id=doc.get("doc_id", "unknown"),
-                    doc_title=doc.get("doc_title", "Untitled"),
-                    section=doc.get("section", ""),
-                    page_number=doc.get("page_number", 1),
-                    snippet=doc.get("content", ""),
-                    similarity_score=round(score, 4),
-                    combined_score=round(score, 4),
-                    metadata=doc.get("metadata", {})
-                )
-                results.append(cit)
-
-            if not results:
-                print(f"[StorageService] WARNING: Atlas $vectorSearch returned 0 results for query: '{query[:80]}' — "
-                      "check that the Atlas vector index exists and chunks are inserted.")
-
-            return results, plain_pipeline
+    def _atlas_citation(self, doc: Dict[str, Any], score: float) -> Citation:
+        return Citation(
+            id=doc.get("id", str(doc.get("_id"))),
+            doc_id=doc.get("doc_id", "unknown"),
+            doc_title=doc.get("doc_title", "Untitled"),
+            section=doc.get("section", ""),
+            page_number=doc.get("page_number", 1),
+            snippet=doc.get("content", ""),
+            similarity_score=round(float(score), 4),
+            combined_score=round(float(score), 4),
+            metadata=doc.get("metadata", {})
+        )
 
     def _build_mongo_filter(self, filters: Optional[SearchFilters]) -> Dict[str, Any]:
         if not filters:
