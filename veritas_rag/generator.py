@@ -107,6 +107,7 @@ class GroundedGenerator:
         answer_mode: str = "grounded"
     ) -> QueryResponse:
         """Create a deterministic answer from exact label:value matches in uploaded documents."""
+        start_time = time.perf_counter()
         mode = "exact" if str(answer_mode).lower() == "exact" else "grounded"
         citations: List[Citation] = []
         seen = set()
@@ -153,7 +154,7 @@ class GroundedGenerator:
             citations=citations,
             conflicts=[],
             groundedness_score=100.0,
-            latency_ms=0.0,
+            latency_ms=round((time.perf_counter() - start_time) * 1000, 2),
             explain_search=explain_search or {"retrieval_mode": "structured_field_lookup", "field_matches": len(field_matches)},
             generation_mode="structured-field-extraction"
         )
