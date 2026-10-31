@@ -53,7 +53,7 @@ Install the dependencies in a virtual environment:
 ```powershell
 cd "C:\path\to\nexora"
 python -m venv .venv
-./.venv/Scripts/Activate.ps1
+& .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -100,13 +100,13 @@ For Atlas lexical search, create a Search index named `chunk_text` on `content`,
 The repository includes a Windows launcher:
 
 ```powershell
-.un.bat
+.\run.bat
 ```
 
 Or start Uvicorn directly:
 
 ```powershell
-..venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Open:
