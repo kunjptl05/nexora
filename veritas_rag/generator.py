@@ -164,29 +164,24 @@ class GroundedGenerator:
         if not citations:
             return True, "No matching document passages could be retrieved from the knowledge base.", []
 
-        q_tokens = set(re.findall(r"\b[a-z0-9]{3,}\b", question.lower())) - self._STOPWORDS
-        combined_corpus = " ".join(c.snippet.lower() for c in citations)
-        matched_tokens = sum(1 for token in q_tokens if token in combined_corpus)
-        token_coverage = matched_tokens / max(1, len(q_tokens))
-        top_score = max(c.similarity_score for c in citations)
-        top_keyword = max(c.keyword_score for c in citations)
+        query_tokens = set(re.findall(r"\b[a-z0-9]{3,}\b", question.lower())) - self._STOPWORDS
+        corpus_tokens = set()
+        for citation in citations:
+            corpus_tokens.update(re.findall(r"\b[a-z0-9]{3,}\b", citation.snippet.lower()))
+
+        matched_tokens = query_tokens.intersection(corpus_tokens)
+        token_coverage = len(matched_tokens) / max(1, len(query_tokens))
         closest = sorted(citations, key=lambda c: c.combined_score, reverse=True)[:2]
 
-        # Questions asking about a particular subject need that subject in the retrieved text.
-        subject_terms = q_tokens - {"components", "component", "parts", "part", "types", "type", "made", "materials", "material"}
-        missing_subjects = [token for token in subject_terms if token not in combined_corpus]
-        if subject_terms and len(missing_subjects) == len(subject_terms) and top_keyword < 0.2:
+        # Atlas RRF scores, vector cosine scores, and BM25 scores use different scales.
+        # Do not compare them to one shared threshold. Use backend-independent evidence overlap.
+        minimum_coverage = float(getattr(config, "abstention_threshold", 0.15))
+        if query_tokens and token_coverage < minimum_coverage:
+            missing_tokens = sorted(query_tokens - corpus_tokens)
             return (
                 True,
-                f"The retrieved passages do not mention the requested subject ({', '.join(sorted(missing_subjects)[:3])}).",
-                closest
-            )
-
-        if token_coverage < 0.2 and top_score < 0.32 and top_keyword < 0.2:
-            missing_tokens = [token for token in q_tokens if token not in combined_corpus]
-            return (
-                True,
-                f"Retrieved passages do not contain enough of the query's key terms ({', '.join(sorted(missing_tokens)[:3])}).",
+                "The retrieved passages do not contain enough of the question's key terms"
+                + (f" ({', '.join(missing_tokens[:4])})." if missing_tokens else "."),
                 closest
             )
 
