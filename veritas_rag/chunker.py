@@ -1,25 +1,28 @@
 import re
 import io
-from typing import List, Tuple, Dict, Any
+import hashlib
+from typing import List, Tuple, Dict, Any, Optional
 from veritas_rag.models import DocumentChunk
-import uuid
+
 
 class Chunker:
-    def __init__(self, chunk_size: int = 450, chunk_overlap: int = 60):
+    def __init__(self, chunk_size: int = 900, chunk_overlap: int = 150):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
     def chunk_document(
-        self, 
-        doc_id: str, 
-        doc_title: str, 
-        content: str, 
+        self,
+        doc_id: str,
+        doc_title: str,
+        content: str,
         metadata: Dict[str, Any] = None,
         pages: List[Tuple[int, str]] = None
     ) -> List[DocumentChunk]:
         """
         Splits text by markdown sections, paragraphs, and sentence boundaries.
         Preserves section titles, paragraph context, and exact page numbers.
+        Chunk IDs are deterministic (SHA-1 based). [Page N] markers are stripped
+        from chunk text. start_char/end_char offsets relative to full content.
         """
         if metadata is None:
             metadata = {}
@@ -28,6 +31,7 @@ class Chunker:
 
         # If explicit page data from PDF is available, chunk page by page
         if pages:
+            chunk_index = 0
             for page_num, page_text in pages:
                 if not page_text.strip():
                     continue
@@ -37,133 +41,185 @@ class Chunker:
                     paragraphs = [p.strip() for p in section_text.split('\n\n') if p.strip()]
                     current_chunk = ""
                     for para in paragraphs:
-                        if len(current_chunk) + len(para) < self.chunk_size:
-                            current_chunk += ("\n\n" + para if current_chunk else para)
+                        # Strip [Page N] markers before storing
+                        clean_para = re.sub(r'\[Page\s+\d+\]\s*', '', para, flags=re.IGNORECASE).strip()
+                        if not clean_para:
+                            continue
+                        if len(current_chunk) + len(clean_para) < self.chunk_size:
+                            current_chunk += ("\n\n" + clean_para if current_chunk else clean_para)
                         else:
                             if current_chunk:
-                                chunks.append(DocumentChunk(
-                                    id=f"chk_{uuid.uuid4().hex[:8]}",
-                                    doc_id=doc_id,
-                                    doc_title=doc_title,
-                                    section=section_title,
-                                    page_number=page_num,
-                                    content=current_chunk.strip(),
-                                    metadata={**page_meta, "section": section_title, "page": page_num}
+                                chunks.append(self._make_chunk(
+                                    doc_id, doc_title, section_title, page_num,
+                                    current_chunk.strip(), page_meta, chunk_index
                                 ))
-                                overlap_start = max(0, len(current_chunk) - self.chunk_overlap)
-                                current_chunk = current_chunk[overlap_start:].strip() + "\n\n" + para
+                                chunk_index += 1
+                                overlap = self._word_boundary_overlap(current_chunk, self.chunk_overlap)
+                                current_chunk = overlap + "\n\n" + clean_para
+                                # Re-split if still over size
+                                if len(current_chunk) > self.chunk_size:
+                                    for sc, ci in self._split_large_paragraph_indexed(
+                                        current_chunk, self.chunk_size, self.chunk_overlap, chunk_index
+                                    ):
+                                        chunks.append(self._make_chunk(
+                                            doc_id, doc_title, section_title, page_num,
+                                            sc.strip(), page_meta, ci
+                                        ))
+                                        chunk_index = ci + 1
+                                    current_chunk = ""
                             else:
-                                sub_chunks = self._split_large_paragraph(para, self.chunk_size, self.chunk_overlap)
-                                for sc in sub_chunks:
-                                    chunks.append(DocumentChunk(
-                                        id=f"chk_{uuid.uuid4().hex[:8]}",
-                                        doc_id=doc_id,
-                                        doc_title=doc_title,
-                                        section=section_title,
-                                        page_number=page_num,
-                                        content=sc.strip(),
-                                        metadata={**page_meta, "section": section_title, "page": page_num}
+                                for sc, ci in self._split_large_paragraph_indexed(
+                                    clean_para, self.chunk_size, self.chunk_overlap, chunk_index
+                                ):
+                                    chunks.append(self._make_chunk(
+                                        doc_id, doc_title, section_title, page_num,
+                                        sc.strip(), page_meta, ci
                                     ))
+                                    chunk_index = ci + 1
                                 current_chunk = ""
                     if current_chunk.strip():
-                        chunks.append(DocumentChunk(
-                            id=f"chk_{uuid.uuid4().hex[:8]}",
-                            doc_id=doc_id,
-                            doc_title=doc_title,
-                            section=section_title,
-                            page_number=page_num,
-                            content=current_chunk.strip(),
-                            metadata={**page_meta, "section": section_title, "page": page_num}
+                        chunks.append(self._make_chunk(
+                            doc_id, doc_title, section_title, page_num,
+                            current_chunk.strip(), page_meta, chunk_index
                         ))
+                        chunk_index += 1
             if chunks:
                 return chunks
-        
-        # Detect sections if markdown headers are present
+
+        # Plain text / markdown path
         sections = self._split_by_sections(content)
-        
+        chunk_index = 0
+        char_offset = 0
+
         for section_title, section_text in sections:
-            # Further split section into paragraphs
             paragraphs = [p.strip() for p in section_text.split('\n\n') if p.strip()]
-            
             current_chunk = ""
             current_page = metadata.get("page_number", 1)
-            
+
             for para in paragraphs:
-                # Check page marker
+                # Extract [Page N] marker before stripping
                 page_match = re.search(r'\[Page\s+(\d+)\]', para, re.IGNORECASE)
                 if page_match:
                     try:
                         current_page = int(page_match.group(1))
                     except ValueError:
                         pass
-                
-                if len(current_chunk) + len(para) < self.chunk_size:
-                    current_chunk += ("\n\n" + para if current_chunk else para)
+                clean_para = re.sub(r'\[Page\s+\d+\]\s*', '', para, flags=re.IGNORECASE).strip()
+                if not clean_para:
+                    continue
+
+                if len(current_chunk) + len(clean_para) < self.chunk_size:
+                    current_chunk += ("\n\n" + clean_para if current_chunk else clean_para)
                 else:
                     if current_chunk:
-                        chunk_obj = DocumentChunk(
-                            id=f"chk_{uuid.uuid4().hex[:8]}",
-                            doc_id=doc_id,
-                            doc_title=doc_title,
-                            section=section_title,
-                            page_number=current_page,
-                            content=current_chunk.strip(),
-                            metadata={**metadata, "section": section_title, "page": current_page}
-                        )
-                        chunks.append(chunk_obj)
-                        
-                        # Retain overlap from end of current chunk
-                        overlap_start = max(0, len(current_chunk) - self.chunk_overlap)
-                        overlap_text = current_chunk[overlap_start:].strip()
-                        current_chunk = overlap_text + "\n\n" + para
+                        start_char = char_offset
+                        end_char = start_char + len(current_chunk)
+                        chunks.append(self._make_chunk(
+                            doc_id, doc_title, section_title, current_page,
+                            current_chunk.strip(), {**metadata, "section": section_title, "page": current_page},
+                            chunk_index, start_char, end_char
+                        ))
+                        chunk_index += 1
+                        char_offset = end_char
+
+                        overlap = self._word_boundary_overlap(current_chunk, self.chunk_overlap)
+                        current_chunk = overlap + "\n\n" + clean_para
+
+                        # Re-split if still over size
+                        if len(current_chunk) > self.chunk_size:
+                            for sc, ci in self._split_large_paragraph_indexed(
+                                current_chunk, self.chunk_size, self.chunk_overlap, chunk_index
+                            ):
+                                s_c = char_offset
+                                e_c = s_c + len(sc)
+                                chunks.append(self._make_chunk(
+                                    doc_id, doc_title, section_title, current_page,
+                                    sc.strip(),
+                                    {**metadata, "section": section_title, "page": current_page},
+                                    ci, s_c, e_c
+                                ))
+                                chunk_index = ci + 1
+                                char_offset = e_c
+                            current_chunk = ""
                     else:
-                        # Single paragraph exceeds chunk size, split by sentences
-                        sub_chunks = self._split_large_paragraph(para, self.chunk_size, self.chunk_overlap)
-                        for sc in sub_chunks:
-                            chunk_obj = DocumentChunk(
-                                id=f"chk_{uuid.uuid4().hex[:8]}",
-                                doc_id=doc_id,
-                                doc_title=doc_title,
-                                section=section_title,
-                                page_number=current_page,
-                                content=sc.strip(),
-                                metadata={**metadata, "section": section_title, "page": current_page}
-                            )
-                            chunks.append(chunk_obj)
+                        for sc, ci in self._split_large_paragraph_indexed(
+                            clean_para, self.chunk_size, self.chunk_overlap, chunk_index
+                        ):
+                            s_c = char_offset
+                            e_c = s_c + len(sc)
+                            chunks.append(self._make_chunk(
+                                doc_id, doc_title, section_title, current_page,
+                                sc.strip(),
+                                {**metadata, "section": section_title, "page": current_page},
+                                ci, s_c, e_c
+                            ))
+                            chunk_index = ci + 1
+                            char_offset = e_c
                         current_chunk = ""
 
             if current_chunk.strip():
-                chunk_obj = DocumentChunk(
-                    id=f"chk_{uuid.uuid4().hex[:8]}",
-                    doc_id=doc_id,
-                    doc_title=doc_title,
-                    section=section_title,
-                    page_number=current_page,
-                    content=current_chunk.strip(),
-                    metadata={**metadata, "section": section_title, "page": current_page}
-                )
-                chunks.append(chunk_obj)
+                start_char = char_offset
+                end_char = start_char + len(current_chunk)
+                chunks.append(self._make_chunk(
+                    doc_id, doc_title, section_title, current_page,
+                    current_chunk.strip(),
+                    {**metadata, "section": section_title, "page": current_page},
+                    chunk_index, start_char, end_char
+                ))
+                chunk_index += 1
+                char_offset = end_char
 
         return chunks
+
+    def _make_chunk(
+        self,
+        doc_id: str,
+        doc_title: str,
+        section: str,
+        page_number: int,
+        content: str,
+        metadata: Dict[str, Any],
+        chunk_index: int,
+        start_char: int = 0,
+        end_char: int = 0
+    ) -> DocumentChunk:
+        """Creates a DocumentChunk with a deterministic SHA-1 ID."""
+        # Deterministic ID: SHA-1 of (doc_id, index, first 50 chars of content)
+        id_source = f"{doc_id}_{chunk_index}_{content[:50]}"
+        chunk_id = "chk_" + hashlib.sha1(id_source.encode("utf-8")).hexdigest()[:12]
+
+        return DocumentChunk(
+            id=chunk_id,
+            doc_id=doc_id,
+            doc_title=doc_title,
+            section=section,
+            page_number=page_number,
+            content=content,
+            metadata={**metadata, "start_char": start_char, "end_char": end_char or (start_char + len(content))}
+        )
+
+    def get_embedding_text(self, chunk: DocumentChunk) -> str:
+        """Returns context-enriched text for embedding (title + section prefix)."""
+        return f"{chunk.doc_title} > {chunk.section or 'Overview'}\n{chunk.content}"
 
     def extract_text_from_pdf(self, pdf_bytes: bytes) -> Tuple[str, List[Tuple[int, str]]]:
         """
         Extracts text from PDF bytes using pypdf.
         Returns combined text and page-by-page mapping.
+        Does NOT embed [Page N] markers in the returned page text.
         """
         import pypdf
         reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
         pages_content = []
-        full_text = []
+        full_text_parts = []
 
         for idx, page in enumerate(reader.pages):
             page_num = idx + 1
             txt = page.extract_text() or ""
-            clean_txt = f"[Page {page_num}]\n" + txt.strip()
-            pages_content.append((page_num, txt))
-            full_text.append(clean_txt)
+            pages_content.append((page_num, txt.strip()))
+            full_text_parts.append(f"[Page {page_num}]\n" + txt.strip())
 
-        return "\n\n".join(full_text), pages_content
+        return "\n\n".join(full_text_parts), pages_content
 
     def _split_by_sections(self, content: str) -> List[Tuple[str, str]]:
         lines = content.split('\n')
@@ -186,23 +242,56 @@ class Chunker:
 
         return sections if sections else [("Overview", content)]
 
-    def _split_large_paragraph(self, text: str, size: int, overlap: int) -> List[str]:
+    def _word_boundary_overlap(self, text: str, overlap_size: int) -> str:
+        """Returns the last `overlap_size` chars cut at a word/sentence boundary."""
+        if len(text) <= overlap_size:
+            return text
+        slice_start = len(text) - overlap_size
+        # Try to find a sentence boundary
+        search_region = text[slice_start:]
+        sent_match = re.search(r'(?<=[.!?])\s+', search_region)
+        if sent_match:
+            return search_region[sent_match.end():]
+        # Fallback: word boundary
+        word_match = re.search(r'\s+', search_region)
+        if word_match:
+            return search_region[word_match.end():]
+        return search_region
+
+    def _split_large_paragraph_indexed(
+        self, text: str, size: int, overlap: int, start_index: int
+    ) -> List[Tuple[str, int]]:
+        """Splits a large paragraph into sized chunks, returns (text, chunk_index) pairs."""
         sentences = re.split(r'(?<=[.!?])\s+', text)
         result = []
         curr = ""
+        idx = start_index
         for s in sentences:
             if len(curr) + len(s) < size:
                 curr += (" " + s if curr else s)
             else:
                 if curr:
-                    result.append(curr)
-                    curr = s
+                    result.append((curr, idx))
+                    idx += 1
+                    # overlap at sentence boundary
+                    overlap_text = self._word_boundary_overlap(curr, overlap)
+                    curr = overlap_text + " " + s if overlap_text else s
                 else:
-                    # Very long sentence, slice it
-                    result.append(s[:size])
-                    curr = s[size:]
+                    # Very long sentence: slice at word boundary
+                    while len(s) > size:
+                        word_cut = s[:size].rfind(' ')
+                        cut = word_cut if word_cut > 0 else size
+                        result.append((s[:cut], idx))
+                        idx += 1
+                        s = s[cut:].lstrip()
+                    curr = s
         if curr:
-            result.append(curr)
+            result.append((curr, idx))
         return result
+
+    def _split_large_paragraph(self, text: str, size: int, overlap: int) -> List[str]:
+        """Legacy helper retained for backward compatibility."""
+        return [t for t, _ in self._split_large_paragraph_indexed(text, size, overlap, 0)]
+
 
 chunker = Chunker()
