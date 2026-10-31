@@ -100,14 +100,21 @@ class StorageService:
                 pass  # Index may already exist
 
             # Idempotently sync local chunks and document records into Atlas.
+            from pymongo import UpdateOne
             if self._chunks:
-                from pymongo import UpdateOne
                 operations = [
                     UpdateOne({"id": chunk.id}, {"$set": chunk.model_dump()}, upsert=True)
                     for chunk in self._chunks.values()
                 ]
                 if operations:
                     self.collection.bulk_write(operations, ordered=False)
+            if self._documents:
+                document_operations = [
+                    UpdateOne({"id": doc_id}, {"$set": record}, upsert=True)
+                    for doc_id, record in self._documents.items()
+                ]
+                if document_operations:
+                    self.db["documents"].bulk_write(document_operations, ordered=False)
 
             self._load_documents_from_atlas()
             return True, "Successfully connected to MongoDB Atlas Vector Search!"
@@ -155,10 +162,13 @@ class StorageService:
 
     def re_embed_all_chunks(self) -> int:
         """Re-embeds all existing chunks when the embedding key or model switches."""
-        chunk_list = list(self._chunks.values())
-        if not chunk_list and self.is_connected and self.collection is not None:
+        chunk_map = {chunk.id: chunk for chunk in self._chunks.values()}
+        if self.is_connected and self.collection is not None:
             records = self.collection.find({}, {"_id": 0})
-            chunk_list = [DocumentChunk(**record) for record in records]
+            for record in records:
+                chunk = DocumentChunk(**record)
+                chunk_map[chunk.id] = chunk
+        chunk_list = list(chunk_map.values())
         if not chunk_list:
             return 0
 
@@ -419,7 +429,7 @@ class StorageService:
                     "path": "embedding",
                     "queryVector": "[float_array_dim_" + str(len(query_embedding)) + "]",
                     "numCandidates": top_k * 10,
-                    "limit": top_k,
+                    "limit": top_k * 4,
                     "filter": mongo_filter
                 }
             },
@@ -901,8 +911,15 @@ class StorageService:
             models = list({chunk.embedding_model for chunk in candidates})
             dimensions = list({chunk.embedding_dim or len(chunk.embedding or []) for chunk in candidates})
 
-        model_mismatch = [model for model in models if model and model != expected_model]
-        dimension_mismatch = [dim for dim in dimensions if dim and int(dim) != expected_dim]
+        if self.is_connected and self.collection is not None:
+            indexed_count = self.collection.count_documents(mongo_filter)
+            if indexed_count and (not models or not dimensions):
+                raise RuntimeError(
+                    "Indexed chunks do not record their embedding model/dimension. "
+                    "Re-embed the full knowledge base before searching."
+                )
+        model_mismatch = [model for model in models if model != expected_model]
+        dimension_mismatch = [dim for dim in dimensions if dim is None or int(dim) != expected_dim]
         if model_mismatch or dimension_mismatch:
             raise RuntimeError(
                 "The indexed documents use a different embedding space from the active query model. "
