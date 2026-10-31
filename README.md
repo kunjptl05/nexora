@@ -1,125 +1,169 @@
-# Nexora: Autonomous Document Intelligence & Evidence Verification Platform
-> **Enterprise Document Intelligence Platform** powered by **MongoDB Atlas Vector Search** (with zero-config local fallback), Autonomous Cross-Document Conflict Radar, Verifiable Provenance & Automated Abstention Guardrails.
+# Nexora — Evidence-first Document Intelligence
 
----
+Nexora helps users search across multiple documents, inspect source passages, and identify **potentially conflicting claims**. Answers include document references so users can verify the evidence themselves.
 
-## 🌟 Architecture & Core Innovations
+> Nexora is a document analysis assistant, not an authoritative legal, regulatory, financial, or medical source. Always check the original documents before acting on a finding.
 
-### 1. Headline Storage: MongoDB Atlas Vector Search
-Nexora is architected around **MongoDB Atlas Vector Search** for scalable, multi-field dense vector indexing and hybrid filtering:
-- Reads `MONGODB_URI` directly from environment variables on startup.
-- Automatically exposes connection status in `/api/status` as **`MongoDB Atlas Vector Search: connected`**.
-- Features an automatic, transparent local in-memory fallback engine for offline development and testing.
+## What it does
 
-#### MongoDB Atlas Vector Search Index Definition
-Create a Vector Search index named `vector_index` on the `knowledge_chunks` collection in your database using this exact JSON definition:
+- **Document Q&A:** Ask questions over the indexed document collection.
+- **Evidence inspection:** Review retrieved passages, document names, sections, and page references.
+- **Conflict Radar:** Highlights possible differences in numerical claims, policy revisions, and selected rule wording across sources.
+- **Evidence-aware abstention:** Uses retrieval signals and query-term coverage to flag questions that appear unsupported by the indexed corpus.
+- **Retrieval trace:** Shows search mode, filters, candidate ranks, and timing information.
+- **Evaluation suite:** Runs a small sample set for retrieval, conflict-detection, abstention, and latency measurements.
+- **Report export:** Exports Markdown or JSON from a query result retained by the running server.
+
+## Retrieval architecture
+
+Nexora supports three retrieval modes:
+
+| Mode | Behaviour |
+| --- | --- |
+| Dense | Vector similarity over the selected embedding model's output |
+| Lexical | BM25 lexical ranking in the local engine; Atlas Search's lexical text ranking when Atlas is enabled |
+| Hybrid | Reciprocal Rank Fusion (RRF) over dense and lexical rankings |
+
+The local lexical implementation uses BM25 term frequency, document frequency, and document-length normalization. Atlas retrieval modes are executed separately for the ablation comparison. If Atlas hybrid fusion is unavailable, the application falls back to the local hybrid engine rather than reporting a dense-only result as hybrid.
+
+The local embedding fallback is a deterministic hashed-feature encoder. It allows zero-configuration development but is not equivalent to a trained semantic embedding model. For stronger semantic retrieval, configure Gemini embeddings and ensure the Atlas vector index dimension matches the actual embedding output.
+
+## Conflict Radar: interpretation and limitations
+
+Conflict Radar uses rule-based extraction and matching to surface **candidate discrepancies**. It compares metric labels, topical domains, and normalized units before computing a numerical difference. Policy-revision signals are limited to explicit amendment/supersession language.
+
+This is a heuristic review aid, not a semantic proof that two statements contradict. Different conditions, populations, jurisdictions, dates, or measurement methods may explain different values. Confirm each finding against the cited source passages before treating it as a real conflict.
+
+## Demo data and benchmark honesty
+
+The repository includes five **synthetic demonstration documents** and a five-case sample evaluation set. Names and institutional attributions in those examples are illustrative and should not be treated as real publications or official policy documents.
+
+Benchmark figures are not hard-coded as product claims. Run the evaluation suite in your own environment and report the test-set size, dataset, retrieval backend, embedding model, and measured results alongside any metrics. A five-case sample is useful for a smoke test, not evidence of general accuracy.
+
+## Requirements
+
+- Python 3.10 or newer
+- Optional: MongoDB Atlas with Vector Search and Search indexes configured
+- Optional: Gemini API key for hosted embeddings and answer generation
+
+Install the dependencies in a virtual environment:
+
+### Windows PowerShell
+
+```powershell
+cd "C:\path\to\nexora"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+If PowerShell blocks activation, run the app using the venv interpreter directly:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+## Configuration (optional)
+
+Set environment variables in the same PowerShell window before starting the server:
+
+```powershell
+$env:GEMINI_API_KEY = "your-gemini-api-key"
+$env:MONGODB_URI = "mongodb+srv://..."
+$env:MONGODB_DB = "nexora_db"
+$env:MONGODB_COLLECTION = "knowledge_chunks"
+$env:MONGODB_VECTOR_INDEX = "vector_index"
+```
+
+Do not commit API keys, database credentials, uploaded files, or private document content.
+
+### MongoDB Atlas indexes
+
+The vector index named `vector_index` must target the `embedding` field and use the same `numDimensions` as the active embedding model. The example below is for a 768-dimensional embedding output:
 
 ```json
 {
   "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 768,
-      "similarity": "cosine"
-    },
-    {
-      "type": "filter",
-      "path": "metadata.category"
-    },
-    {
-      "type": "filter",
-      "path": "metadata.year"
-    },
-    {
-      "type": "filter",
-      "path": "doc_id"
-    }
+    { "type": "vector", "path": "embedding", "numDimensions": 768, "similarity": "cosine" },
+    { "type": "filter", "path": "metadata.category" },
+    { "type": "filter", "path": "metadata.year" },
+    { "type": "filter", "path": "doc_id" }
   ]
 }
 ```
 
----
+For Atlas lexical search, create a Search index named `chunk_text` on `content`, `doc_title`, and `section`. Confirm the index is ready before using Atlas lexical or hybrid retrieval.
 
-### 2. Multi-Modality Retrieval Ablation (Dense vs. Lexical vs. Hybrid RRF)
-Nexora implements Reciprocal Rank Fusion (RRF) to combine dense semantic embeddings with exact lexical keyword matching. The embedded evaluation suite runs an automated ablation study across three modes:
+## Run locally
 
-| Retrieval Modality | Description | Hit Rate @ 3 | MRR |
-| :--- | :--- | :---: | :---: |
-| **Dense Only** | Cosine similarity over dense vector embeddings | 80.0% | 0.73 |
-| **Lexical Only** | Exact token BM25 matching over text and section headings | 80.0% | 0.70 |
-| **Hybrid (RRF Fusion)** | Reciprocal Rank Fusion combining dense rank + lexical rank | **100.0%** | **1.00** |
+The repository includes a Windows launcher:
 
-*Hybrid search with RRF consistently outperforms single-modality retrieval by ensuring both conceptual semantic similarity and exact statutory/numerical tokens are captured.*
-
----
-
-### 3. Automated Cross-Document Conflict Radar
-When multiple document versions or policies state contrasting figures, standard search systems blur them together. Nexora parses structured metric claims and surfaces side-by-side reconciliation cards:
-- **Domain-Grounded Claim Matching**: Compares claims strictly within matching domains (e.g. solar panel efficiency is never falsely matched against battery storage roundtrip efficiency).
-- **Quantitative Delta Indicators**:
-  - Solar Efficiency: `18.0%` → `22.0%` (**`+4.0% Net Increase`**)
-  - Equipment Warranty: `3 years` → `5 years` (**`+2 Years Warranty`**)
-  - Residential Subsidies: `$5,000` → `$3,500` (**`-$1,500 Budget Realignment`**)
-
----
-
-### 4. Explain Vector Search Results (Retrieval Trace)
-Every query surfaces a complete retrieval trace for full transparency:
-- The `$vectorSearch` aggregation pipeline stage executed.
-- Applied metadata filters (`metadata.category`, `metadata.year`, `doc_id`).
-- Pre-RRF candidates with raw vector similarity scores and lexical token overlap scores.
-- Post-RRF candidate rankings and combined scores.
-- Latency breakdown (dense encoding time, search execution time, total time).
-
----
-
-### 5. Automated Abstention Guardrail (Hallucination Prevention)
-Evaluates token coverage and semantic confidence before generation. When presented with out-of-scope queries (e.g. *"What is the current market price of gold in India today?"*), Nexora safely refuses to answer and explains the absence of evidence in the indexed corpus.
-
----
-
-### 6. Server-Side Verified Intelligence Reports
-Reports are generated and signed server-side using stored query IDs to prevent forged client assertions:
-- Groundedness verdicts are assigned conditionally based on actual score thresholds (e.g. High Groundedness, Moderate Groundedness, or Safe Abstention).
-- Exportable to clean Markdown with full source citations, passage excerpts, and conflict breakdowns.
-
----
-
-## 🚀 Quick Start Guide
-
-### Prerequisites
-- Python 3.10+ (tested with Python 3.14)
-- (Optional) MongoDB Atlas Cluster with Vector Search enabled
-
-### 1. Configuration (Environment Variables)
-Set your environment variables (optional — defaults to local fallback):
-```bash
-set MONGODB_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/?retryWrites=true&w=majority
-set GEMINI_API_KEY=AIzaSy...
+```powershell
+.un.bat
 ```
 
-### 2. Launching Nexora
-Run the launcher:
-```bash
-run.bat
-```
-Or directly activate Python:
-```bash
-.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+Or start Uvicorn directly:
+
+```powershell
+..venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 3. Open in Browser
-Navigate to **`http://127.0.0.1:8000`**.
+Open:
 
----
+- App: http://127.0.0.1:8000
+- API documentation: http://127.0.0.1:8000/docs
+- Health/status: http://127.0.0.1:8000/api/status
 
-## 🧪 Ground-Truth Benchmark Matrix
+The server binds to loopback by default for local development. Do not expose it to a public network without adding authentication/authorization, rate limiting, secure secret management, and production-grade upload and storage controls.
 
-| Test ID | Query Subject | Expected Sources | Mode | Groundedness | Status |
-| :--- | :--- | :--- | :---: | :---: | :---: |
-| **eval_01** | Solar Panel Efficiency Standard (2023) | Solar Policy Framework 2023 | Hybrid | 79.6% | **HIT (1.00)** |
-| **eval_02** | Solar Efficiency & Subsidy Comparison | Solar 2023 & CleanTech 2025 | Hybrid | 86.3% | **HIT (1.00) + Conflict** |
-| **eval_03** | Battery Storage Roundtrip & Degradation | Grid Storage Technical Whitepaper | Hybrid | 82.3% | **HIT (1.00)** |
-| **eval_04** | Market Price of Gold in India (Out-of-Scope) | None (Out-of-Domain) | Hybrid | 0.0% | **HIT (1.00) + Abstained** |
-| **eval_05** | Financial Subsidy / Rebate Discrepancy | Solar 2023 & CleanTech 2025 | Hybrid | 84.7% | **HIT (1.00) + Conflict** |
+## Local data
+
+The local fallback persists its document metadata and chunk content in `data_store.json`. This file may contain private uploaded text. Keep it local and out of version control. It is not a substitute for a managed, access-controlled database or a backup strategy.
+
+## Evaluation
+
+Use the **Benchmark & Ablation** screen or send:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/eval/run
+```
+
+The evaluation response reports the configured sample metrics and per-case results. Interpret the output in the context of the evaluation set; do not present these numbers as universal accuracy guarantees.
+
+## Known limitations
+
+- Conflict detection is heuristic and may produce false positives or miss paraphrased contradictions.
+- The local feature-hash embedding fallback is not a learned semantic model.
+- Abstention relies on configurable retrieval heuristics; it does not guarantee that every unsupported answer will be rejected.
+- Query-result report exports are held in the running process's bounded in-memory cache. Re-run a query after restarting the server before exporting its report.
+- Authentication and role-based access control are not yet implemented. Keep the server local and do not deploy it as a public multi-user service in its current form.
+
+## Before production
+
+1. Add authentication, role-based authorization, and tenant isolation.
+2. Add upload content-type validation, malware scanning, size limits, and per-user quotas.
+3. Persist query history and report metadata securely.
+4. Add comprehensive automated tests for retrieval mode parity, conflicts, abstention, report export, and embedding dimension changes.
+5. Evaluate on a larger, independently labelled dataset and publish reproducible benchmark methodology.
+
+## Project layout
+
+```text
+.
+├── main.py
+├── run.bat
+├── static/
+│   ├── index.html
+│   └── app.js
+└── veritas_rag/
+    ├── chunker.py
+    ├── config.py
+    ├── conflict_radar.py
+    ├── embeddings.py
+    ├── evaluator.py
+    ├── generator.py
+    ├── models.py
+    ├── samples.py
+    └── storage.py
+```
