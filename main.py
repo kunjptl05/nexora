@@ -46,10 +46,10 @@ allowed_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # 1. System Status & Health
@@ -211,23 +211,24 @@ def reset_documents(confirm: bool = Form(False)):
 # 4. Report Export Endpoint (Server-Side Verified)
 @app.post("/api/export/report")
 def export_report(req: ReportExportRequest):
+    if req.format.lower() not in {"markdown", "json"}:
+        raise HTTPException(status_code=400, detail="Supported report formats are markdown and json.")
+
     cached = storage_service.get_query_result(req.query_id)
-    
-    if cached:
-        query_text = cached.question
-        answer_text = cached.answer
-        grounded_score = cached.groundedness_score
-        abstained = cached.abstained
-        conflicts_list = cached.conflicts
-        citations_list = cached.citations
-    else:
-        # Fallback to request payload if provided
-        query_text = req.query or "Custom Investigation"
-        answer_text = req.answer or "No answer provided."
-        grounded_score = req.groundedness_score or 0.0
-        abstained = False
-        conflicts_list = req.conflicts or []
-        citations_list = req.citations or []
+    if cached is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Query result not found or expired. Run the query again before exporting its report."
+        )
+
+    # Rebuild report content from server-held query results only.
+    # Client-provided answer/citation fields are intentionally ignored.
+    query_text = cached.question
+    answer_text = cached.answer
+    grounded_score = cached.groundedness_score
+    abstained = cached.abstained
+    conflicts_list = cached.conflicts
+    citations_list = cached.citations
 
     # Conditional honesty grading - strictly no blanket overclaiming
     if abstained:
