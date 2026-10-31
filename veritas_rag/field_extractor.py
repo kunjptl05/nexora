@@ -44,7 +44,7 @@ _ALL_LABELS = sorted(
     reverse=True
 )
 _LABEL_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9])(?P<label>" + "|".join(re.escape(label) for label in _ALL_LABELS) + r")(?![A-Za-z0-9])\s*[:：]\s*",
+    r"(?<![A-Za-z0-9])(?P<label>" + "|".join(re.escape(label) for label in _ALL_LABELS) + r")(?![A-Za-z0-9])\s*(?:\([^)]*\)\s*)?[:：]\s*",
     re.IGNORECASE
 )
 
