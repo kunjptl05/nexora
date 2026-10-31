@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXORA Study Buddy — Learn, Practice, Revise</title>
+<title>NEXORA — Learn, Practice, Revise</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -12,7 +12,7 @@
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
     body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #F7F9F8; }
     code, pre { font-family: 'JetBrains Mono', monospace; }
-    
+
     .forest-surface {
       background: #FFFFFF;
       border: 1px solid #E2E8F0;
@@ -138,7 +138,7 @@
 
   <!-- ==================== SAAS LEFT SIDEBAR (FOREST & TERRACOTTA) ==================== -->
   <aside class="w-64 h-full bg-[#0F3E33] text-white flex flex-col justify-between shrink-0 z-30 shadow-md">
-    
+
     <!-- Top Branding & Navigation -->
     <div class="flex flex-col">
       <!-- App Brand Header -->
@@ -149,17 +149,16 @@
           </div>
           <div>
             <div class="flex items-center gap-1.5">
-              <span class="font-extrabold text-lg tracking-tight text-white">NEXORA Study Buddy</span>
-              <span class="block text-[9px] text-emerald-200">Study Buddy</span>
+              <span class="font-extrabold text-lg tracking-tight text-white">NEXORA</span>
             </div>
-             
+
           </div>
         </div>
       </div>
 
       <!-- Main Navigation Menu -->
       <nav class="p-3 space-y-1.5 text-xs">
-        <button onclick="switchTab('chat')" id="navBtn-chat" 
+        <button onclick="switchTab('chat')" id="navBtn-chat"
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between transition-all bg-[#E07A5F] text-white shadow-sm">
           <div class="flex items-center gap-2.5">
             <i data-lucide="message-square" class="w-4 h-4"></i>
@@ -168,25 +167,25 @@
           <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-white/20">3-Panel</span>
         </button>
 
-        <button onclick="switchTab('docs')" id="navBtn-docs" 
+        <button onclick="switchTab('docs')" id="navBtn-docs"
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all text-emerald-100 hover:text-white hover:bg-emerald-900/40">
           <div class="flex items-center gap-2.5">
             <i data-lucide="folder-kanban" class="w-4 h-4 text-emerald-300"></i>
             <span>Knowledge Base</span>
           </div>
-          <span id="navDocCountPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-900/80 text-emerald-200 border border-emerald-800">5</span>
+          <span id="navDocCountPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-900/80 text-emerald-200 border border-emerald-800">0</span>
         </button>
 
-        <button onclick="switchTab('conflict')" id="navBtn-conflict" 
+        <button onclick="switchTab('conflict')" id="navBtn-conflict"
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all text-emerald-100 hover:text-white hover:bg-emerald-900/40">
           <div class="flex items-center gap-2.5">
             <i data-lucide="git-compare" class="w-4 h-4 text-emerald-300"></i>
-            <span>Conflict Radar</span>
+            <span>Compare Algorithms</span>
           </div>
           <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#E07A5F]/20 text-[#E07A5F] border border-[#E07A5F]/30">Radar</span>
         </button>
 
-        <button onclick="switchTab('eval')" id="navBtn-eval" 
+        <button onclick="switchTab('eval')" id="navBtn-eval"
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all text-emerald-100 hover:text-white hover:bg-emerald-900/40">
           <div class="flex items-center gap-2.5">
             <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-300"></i>
@@ -206,28 +205,12 @@
         <span>Add Document</span>
       </button>
 
-      <!-- MongoDB Atlas Headline Status Card -->
-      <div class="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-800/60 text-xs">
-        <div class="flex items-center justify-between mb-1.5">
-          <div class="flex items-center gap-1.5">
-            <span id="sidebarStatusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span id="sidebarStatusText" class="font-bold text-[10.5px] text-emerald-200">Local Vector Fallback Active</span>
-          </div>
-          <button onclick="resetKnowledgeBase()" title="Reset to standard benchmark datasets" class="p-1 rounded-md text-emerald-400 hover:text-white hover:bg-emerald-800/50 transition-colors">
-            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-          </button>
-        </div>
-        <div class="flex items-center justify-between text-[10px] text-emerald-300/70 font-semibold">
-          <span id="sidebarDocStats">5 docs · 20 chunks</span>
-          <span class="text-emerald-300 font-mono">Evidence-backed answers</span>
-        </div>
-      </div>
     </div>
   </aside>
 
   <!-- ==================== MAIN APPLICATION VIEWPORT ==================== -->
   <div class="flex-1 flex flex-col h-full overflow-hidden">
-    
+
     <!-- Top Header Bar -->
     <header class="h-14 bg-white border-b border-stone-200/80 px-6 flex items-center justify-between shrink-0 z-20">
       <div class="flex items-center gap-3">
@@ -238,7 +221,7 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <button onclick="exportCurrentReport()" title="Export server-verified intelligence report" 
+        <button onclick="exportCurrentReport()" title="Export server-verified intelligence report"
                 class="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-50 text-stone-700 hover:text-stone-900 border border-stone-200 text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs">
           <i data-lucide="download" class="w-3.5 h-3.5 text-[#E07A5F]"></i>
           <span>Export Report</span>
@@ -256,14 +239,14 @@
 
       <!-- ==================== TAB 1: 3-PANEL CHAT WORKSPACE ==================== -->
       <section id="tab-chat" class="h-full overflow-hidden workspace-grid">
-        
+
         <!-- PANEL A: Document Scope / Collection (Left, ~250px) -->
         <aside id="panel-documents" class="workspace-panel h-full bg-[#F3F6F4] border-r border-stone-200 flex flex-col">
           <div class="p-3 border-b border-stone-200 bg-white flex items-center justify-between gap-2">
             <span class="text-xs font-extrabold text-stone-900 flex items-center gap-1.5 min-w-0">
               <i data-lucide="files" class="w-3.5 h-3.5 text-emerald-700"></i>
               <span>Indexed Documents</span>
-              <span id="scopeDocBadge" class="px-1.5 py-0.2 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-800 border border-emerald-200">5</span>
+              <span id="scopeDocBadge" class="px-1.5 py-0.2 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-800 border border-emerald-200">0</span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
               <button onclick="toggleAllScope()" id="btnSelectAllScope" class="text-[10px] font-bold text-[#E07A5F] hover:text-[#D0694E]">All</button>
@@ -277,7 +260,7 @@
           <div class="p-2.5 border-b border-stone-200 bg-[#F3F6F4]">
             <div class="relative">
               <i data-lucide="search" class="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-2.5"></i>
-              <input type="text" id="scopeSearchInput" oninput="filterScopeDocs()" placeholder="Filter sources..." 
+              <input type="text" id="scopeSearchInput" oninput="filterScopeDocs()" placeholder="Filter sources..."
                      class="w-full bg-white border border-stone-200 rounded-lg pl-8 pr-2.5 py-1 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-emerald-600">
             </div>
           </div>
@@ -289,7 +272,7 @@
 
           <!-- Bottom Scope Filter Summary -->
           <div class="p-2.5 border-t border-stone-200 bg-white text-[10px] text-stone-500 flex items-center justify-between">
-            <span>Scope Target: <strong id="selectedScopeCountText" class="text-stone-800">5 of 5 active</strong></span>
+            <span>Scope Target: <strong id="selectedScopeCountText" class="text-stone-800">0 of 0 active</strong></span>
             <span class="text-emerald-700 font-bold">Scoped</span>
           </div>
         </aside>
@@ -298,30 +281,30 @@
 
         <!-- PANEL B: Conversation -->
         <div id="panel-chat" class="workspace-panel flex flex-col h-full bg-[#F7F9F8] overflow-hidden">
-          
-          <!-- Quick Demonstration Prompt Pills -->
+
+          <!-- DSA Practice Prompts -->
           <div class="px-5 py-2.5 border-b border-stone-200/80 bg-white shrink-0 flex items-center gap-2 overflow-x-auto text-xs custom-scrollbar">
             <span class="text-stone-400 font-bold flex items-center gap-1 shrink-0 text-[11px]">
-              <i data-lucide="zap" class="w-3.5 h-3.5 text-[#E07A5F]"></i> Demos:
+              <i data-lucide="zap" class="w-3.5 h-3.5 text-[#E07A5F]"></i> Try a DSA question:
             </span>
             <button type="button" class="panel-toggle shrink-0" onclick="toggleWorkspacePanel('chat')" title="Close Conversation" aria-label="Close Conversation">
               <i data-lucide="panel-top-close" class="w-4 h-4"></i>
             </button>
-            <button onclick="runSamplePrompt('Compare solar panel efficiency, warranty period, and financial subsidies between the 2023 framework and the 2025 Modernization Act.')" 
+            <button onclick="runSamplePrompt('Explain binary search. What must be true about the input, and what are its time and space complexities?')"
                     class="px-3 py-1 rounded-full bg-[#F0FDF4] hover:bg-emerald-100 border border-emerald-200 text-emerald-900 font-semibold shrink-0 transition-all shadow-2xs flex items-center gap-1.5 text-[11px]">
-              <span>⚡ Multi-Source + Conflict Radar</span>
+              <span>Binary search</span>
             </button>
-            <button onclick="runSamplePrompt('Which battery chemistries and physical cell components are explicitly named in the grid storage whitepaper?')" 
+            <button onclick="runSamplePrompt('Compare BFS and DFS. When does BFS find a shortest path?')"
                     class="px-3 py-1 rounded-full bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-semibold shrink-0 transition-all shadow-2xs flex items-center gap-1.5 text-[11px]">
-              <span>⚡ Battery Components & Chemistry</span>
+              <span>BFS vs DFS</span>
             </button>
-            <button onclick="runSamplePrompt('What is the current market price of gold in India today?')" 
+            <button onclick="runSamplePrompt('How does the hash map approach solve Two Sum, and what are its time and space costs?')"
                     class="px-3 py-1 rounded-full bg-[#FFF1F2] hover:bg-rose-100 border border-rose-200 text-rose-900 font-semibold shrink-0 transition-all shadow-2xs flex items-center gap-1.5 text-[11px]">
-              <span>🛡️ Safe Abstention Guardrail</span>
+              <span>Two Sum</span>
             </button>
-            <button onclick="runSamplePrompt('What caused the token gateway latency spike in the Q3 production incident post-mortem?')" 
+            <button onclick="runSamplePrompt('Compare average-case and worst-case hash map lookup time. What causes the difference?')"
                     class="px-3 py-1 rounded-full bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-semibold shrink-0 transition-all shadow-2xs flex items-center gap-1.5 text-[11px]">
-              <span>⚡ Architecture RCA</span>
+              <span>Hash map complexity</span>
             </button>
           </div>
 
@@ -340,9 +323,9 @@
           <div class="p-4 bg-white border-t border-stone-200 shrink-0">
             <form id="queryForm" onsubmit="handleQuerySubmit(event)" class="relative max-w-4xl mx-auto">
               <div class="relative rounded-2xl bg-white border border-stone-300 focus-within:border-emerald-600 shadow-sm transition-all overflow-hidden">
-                <textarea id="queryInput" rows="2" placeholder="Ask across your documents (e.g. 'Compare solar panel efficiency and subsidies between 2023 and 2025')..." 
+                <textarea id="queryInput" rows="2" placeholder="Ask a question about your study materials (e.g. 'When should I use BFS instead of DFS?')..."
                           class="w-full bg-transparent px-4 py-3 text-xs text-stone-900 placeholder-stone-400 focus:outline-none resize-none"></textarea>
-                
+
                 <div class="px-3 py-2 flex flex-wrap gap-2 border-t border-stone-100 bg-white">
                   <input id="uploadedAfterFilter" type="date" aria-label="Uploaded after" class="text-[10px] border rounded px-2 py-1">
                   <input id="uploadedBeforeFilter" type="date" aria-label="Uploaded before" class="text-[10px] border rounded px-2 py-1">
@@ -431,7 +414,7 @@
       <!-- ==================== TAB 2: KNOWLEDGE BASE ==================== -->
       <section id="tab-docs" class="hidden h-full overflow-y-auto custom-scrollbar p-6">
         <div class="max-w-6xl mx-auto space-y-6">
-          
+
           <!-- Knowledge Base Header & Controls -->
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -445,7 +428,7 @@
             <div class="flex items-center gap-2.5">
               <button onclick="resetKnowledgeBase()" class="px-3.5 py-2 bg-white hover:bg-stone-50 text-stone-700 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-stone-200 shadow-2xs">
                 <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-stone-500"></i>
-                <span>Reset to Standard Benchmark</span>
+                <span>Restore DSA Practice Notes</span>
               </button>
               <button onclick="openUploadModal()" class="px-4 py-2 bg-[#E07A5F] hover:bg-[#D0694E] text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all">
                 <i data-lucide="plus-circle" class="w-4 h-4"></i>
@@ -458,15 +441,14 @@
           <div class="forest-surface rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
             <div class="relative flex-1">
               <i data-lucide="search" class="w-4 h-4 text-stone-400 absolute left-3 top-2.5"></i>
-              <input type="text" id="kbSearchInput" oninput="filterKnowledgeBaseDocs()" placeholder="Search documents by title, author, or content..." 
+              <input type="text" id="kbSearchInput" oninput="filterKnowledgeBaseDocs()" placeholder="Search documents by title, author, or content..."
                      class="w-full bg-[#F7F9F8] border border-stone-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-emerald-600">
             </div>
 
             <!-- Category Pills -->
             <div class="flex items-center gap-1.5 overflow-x-auto text-xs shrink-0" id="kbCategoryPills">
               <button onclick="setKbCategoryFilter('all')" class="kb-cat-btn px-3 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">All</button>
-              <button onclick="setKbCategoryFilter('Clean Energy')" class="kb-cat-btn px-3 py-1 rounded-lg text-[11px] font-medium text-stone-600 hover:bg-stone-100">Clean Energy</button>
-              <button onclick="setKbCategoryFilter('Software Infrastructure')" class="kb-cat-btn px-3 py-1 rounded-lg text-[11px] font-medium text-stone-600 hover:bg-stone-100">Software Infrastructure</button>
+              <button onclick="setKbCategoryFilter('Data Structures & Algorithms')" class="kb-cat-btn px-3 py-1 rounded-lg text-[11px] font-medium text-stone-600 hover:bg-stone-100">Data Structures &amp; Algorithms</button>
             </div>
           </div>
 
@@ -480,7 +462,7 @@
       <!-- ==================== TAB 3: CONFLICT RADAR DASHBOARD ==================== -->
       <section id="tab-conflict" class="hidden h-full overflow-y-auto custom-scrollbar p-6">
         <div class="max-w-6xl mx-auto space-y-6">
-          
+
           <!-- Conflict Radar Header -->
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -488,17 +470,17 @@
                 <span class="w-2.5 h-2.5 rounded-full bg-[#E07A5F] animate-ping"></span>
                 <h2 class="text-lg font-extrabold text-[#0F3E33] flex items-center gap-2">
                   <i data-lucide="git-compare" class="w-5 h-5 text-emerald-700"></i>
-                  <span>Conflict Intelligence Dashboard</span>
+                  <span>Compare Algorithms</span>
                 </h2>
               </div>
-              <p class="text-xs text-stone-500">Autonomous multi-document discrepancy detection with structured metric claim extraction & delta calculations.</p>
+              <p class="text-xs text-stone-500">Compare algorithm choices, input requirements, and time and space costs.</p>
             </div>
 
             <div class="flex items-center gap-2">
-              <button onclick="runSamplePrompt('Compare solar panel efficiency, warranty period, and financial subsidies between the 2023 framework and the 2025 Modernization Act.')" 
+              <button onclick="runSamplePrompt('Compare average and worst-case hash map lookup time with cited examples.')"
                       class="px-4 py-2 bg-[#E07A5F] hover:bg-[#D0694E] text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all">
                 <i data-lucide="play" class="w-4 h-4"></i>
-                <span>Re-Analyze Multi-Source Conflicts</span>
+                <span>Compare hash map complexity</span>
               </button>
             </div>
           </div>
@@ -506,19 +488,19 @@
           <!-- Conflict Radar Metrics Bar -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div class="forest-card p-4 rounded-xl border border-stone-200">
-              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Discrepancy Status</span>
-              <div id="conflictMetricActive" class="text-2xl font-extrabold text-[#E07A5F] mt-1">Active</div>
-              <span class="text-[10px] text-stone-500 font-semibold">Continuous Multi-Source Radar</span>
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Study Topic</span>
+              <div id="conflictMetricActive" class="text-2xl font-extrabold text-[#E07A5F] mt-1">Algorithms</div>
+              <span class="text-[10px] text-stone-500 font-semibold">Compare learning approaches</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
-              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Quantitative Deltas</span>
-              <div id="conflictMetricQuantitative" class="text-2xl font-extrabold text-[#0F3E33] mt-1">3 Caught</div>
-              <span class="text-[10px] text-stone-500 font-semibold">Efficiency, Warranty, Rebates</span>
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Practice Comparisons</span>
+              <div id="conflictMetricQuantitative" class="text-2xl font-extrabold text-[#0F3E33] mt-1">3 Topics</div>
+              <span class="text-[10px] text-stone-500 font-semibold">Hash maps, searching, trees</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
-              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Version Amendments</span>
-              <div id="conflictMetricVersion" class="text-2xl font-extrabold text-[#0F3E33] mt-1">2023 → 2025</div>
-              <span class="text-[10px] text-stone-500 font-semibold">Statutory Supersession</span>
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Study Materials</span>
+              <div id="conflictMetricVersion" class="text-2xl font-extrabold text-[#0F3E33] mt-1">DSA</div>
+              <span class="text-[10px] text-stone-500 font-semibold">Data structures and algorithms</span>
             </div>
             <div class="forest-card p-4 rounded-xl border border-stone-200">
               <span class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Analysis Status</span>
@@ -537,7 +519,7 @@
       <!-- ==================== TAB 4: BENCHMARK & ABLATION SUITE ==================== -->
       <section id="tab-eval" class="hidden h-full overflow-y-auto custom-scrollbar p-6">
         <div class="max-w-6xl mx-auto space-y-6">
-          
+
           <!-- Benchmark Suite Header -->
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -730,23 +712,23 @@
     <form onsubmit="handleUploadSubmit(event)" class="p-6 space-y-4 text-xs">
       <div>
         <label class="block text-stone-700 font-bold mb-1">Document Title</label>
-        <input type="text" id="upTitle" required placeholder="e.g. Energy Transition Standard 2026" 
+          <input type="text" id="upTitle" required placeholder="e.g. DSA Revision Notes"
                class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 focus:outline-none focus:border-emerald-600">
       </div>
       <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="block text-stone-700 font-bold mb-1">Category</label>
-          <input type="text" id="upCategory" value="Clean Energy" 
+          <input type="text" id="upCategory" value="Data Structures & Algorithms"
                  class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
         </div>
         <div>
           <label class="block text-stone-700 font-bold mb-1">Author</label>
-          <input type="text" id="upAuthor" value="Energy Commission" 
+          <input type="text" id="upAuthor" value="My Study Notes"
                  class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
         </div>
         <div>
           <label class="block text-stone-700 font-bold mb-1">Year (Optional)</label>
-          <input type="number" id="upYear" placeholder="Auto-detect" 
+          <input type="number" id="upYear" placeholder="Auto-detect"
                  class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900">
         </div>
       </div>
@@ -758,7 +740,7 @@
       <div><label class="block text-stone-700 font-bold mb-1">Or import a webpage URL</label><input type="url" id="upUrl" placeholder="https://example.edu/lesson" class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900"></div>
       <div>
         <label class="block text-stone-700 font-bold mb-1">Or Paste Direct Text Content</label>
-        <textarea id="upText" rows="4" placeholder="# Paste markdown or plain text content here..." 
+        <textarea id="upText" rows="4" placeholder="# Paste markdown or plain text content here..."
                   class="w-full bg-[#F7F9F8] border border-stone-300 rounded-lg px-3 py-2 text-stone-900 focus:outline-none focus:border-emerald-600 font-mono"></textarea>
       </div>
       <div class="pt-2 flex justify-end gap-2">

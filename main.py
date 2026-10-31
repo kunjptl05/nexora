@@ -35,7 +35,7 @@ from veritas_rag.field_extractor import detect_field_intent
 # Modern FastAPI Lifespan Handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Ensure sample benchmark datasets are loaded idempotently
+    # Startup: remove the old showcase and seed DSA study notes idempotently
     load_sample_datasets()
     yield
     # Shutdown logic if any
@@ -318,7 +318,7 @@ def reset_documents(confirm: bool = Form(False)):
     load_sample_datasets(force_reload=True)
     return {
         "success": True, 
-        "message": "Knowledge base reset to default benchmark datasets.",
+        "message": "Your study library was reset to the DSA practice notes.",
         "total_documents": storage_service.count_documents(),
         "total_chunks": storage_service.count_chunks()
     }
@@ -461,19 +461,26 @@ def create_study_kit(req: StudyKitRequest):
     if req.filters is None:
         req.filters = SearchFilters()
     req.filters.owner_id = config.owner_id
-    topic = req.topic.strip() or "key ideas"
+    topic = req.topic.strip() or "data structures and algorithms fundamentals"
     citations, trace = storage_service.hybrid_search(
         query=f"Key concepts and important facts about {topic}", filters=req.filters,
         top_k=min(50, req.count * 2), use_hybrid=True,
     )
     if not citations:
-        return {"kind": req.kind, "topic": topic, "cards": [], "message": "No supporting study materials were found. Add or select source material first."}
+        return {"kind": req.kind, "topic": topic, "cards": [], "message": "No passages matched those filters. Clear the date or content-type filters, select another source, or add study notes."}
     cards = []
     seen = set()
     for citation in citations:
-        for sentence in re.split(r"(?<=[.!?])\s+", citation.snippet.strip()):
+        source_text = citation.snippet.strip()
+        sentences = re.split(r"(?<=[.!?])\s+", source_text)
+        usable_sentences = [sentence.strip() for sentence in sentences if len(sentence.strip()) >= 30]
+        # Some valid chunks contain headings, short bullets, or one compact fact.
+        # Keep those useful passages available to quiz and flashcard generation.
+        if not usable_sentences and source_text:
+            usable_sentences = [source_text]
+        for sentence in usable_sentences:
             sentence = sentence.strip()
-            if len(sentence) < 30 or sentence.lower() in seen:
+            if sentence.lower() in seen:
                 continue
             seen.add(sentence.lower())
             section = citation.section or "Key idea"

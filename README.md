@@ -1,6 +1,6 @@
-# NEXORA Study Buddy
+# NEXORA
 
-NEXORA Study Buddy helps learners chat with their own study materials, get simple evidence-backed explanations, compare sources, and identify topics to revisit. Ask the Study Chat to explain a concept simply, create practice questions, make flashcards, or build an exam revision outline from uploaded materials. Citations link back to the original uploaded file at its cited PDF page; webpage and text sources open in a readable source view.
+NEXORA helps learners chat with their study materials, get simple evidence-backed explanations, create quizzes and flashcards, plan revisions, and identify topics to revisit. The starter library contains data structures and algorithms (DSA) notes and practice prompts. Citations link to the original uploaded file at its cited PDF page; webpage and text sources open in a readable source view.
 
 Nexora helps users search across multiple documents, inspect source passages, and identify **potentially conflicting claims**. Answers include document references so users can verify the evidence themselves.
 
@@ -23,9 +23,9 @@ The Workspace offers two answer modes:
 - **Grounded:** produces a concise answer from retrieved passages, attaches inline citation numbers, and includes the matching original sentences with document, section, and page references.
 - **Exact source text:** returns relevant original sentences without paraphrasing.
 
-For list and component questions, Nexora is instructed to enumerate only items explicitly present in retrieved evidence. It distinguishes battery chemistries from physical cell components. If a document names a chemistry but does not describe internal parts, Nexora says the component breakdown is not present instead of filling the gap with a generic list.
+For list questions, Nexora is instructed to enumerate only items explicitly present in retrieved evidence and to identify when the source does not contain the requested detail.
 
-The local structured path handles battery component questions deterministically to avoid unsupported completion. For other questions, Gemini generation (when configured) receives strict source-only instructions; the local fallback extracts relevant source sentences. Retrieved source passages remain available in the Evidence Inspector.
+Gemini generation (when configured) receives strict source-only instructions; the local fallback extracts relevant source sentences. Retrieved source passages remain available in the Evidence Inspector.
 
 ## Structured form-field lookup
 
@@ -59,7 +59,7 @@ This is a heuristic review aid, not a semantic proof that two statements contrad
 
 ## Demo data and benchmark honesty
 
-The repository includes five **synthetic demonstration documents** and a five-case sample evaluation set. Names and institutional attributions in those examples are illustrative and should not be treated as real publications or official policy documents.
+The repository seeds six **DSA learning notes** and a five-case labelled evaluation set. The notes cover complexity, arrays and hash maps, linear structures, trees and graphs, dynamic programming, and common complexity claims. They are practice material, not externally sourced references.
 
 Benchmark figures are not hard-coded as product claims. Run the evaluation suite in your own environment and report the test-set size, dataset, retrieval backend, embedding model, and measured results alongside any metrics. A five-case sample is useful for a smoke test, not evidence of general accuracy.
 
@@ -201,7 +201,7 @@ Use the **Benchmark & Ablation** screen or send:
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/eval/run
 ```
 
-The evaluation response reports expected and retrieved source IDs per case. The labelled set includes three-document synthesis, distant-section retrieval, conflicting values, and unanswerable queries, alongside the original sample cases. The seeded sources remain synthetic demonstrations; add your own representative collection before presenting results as real-world performance.
+The evaluation response reports expected and retrieved source IDs per case. The labelled set includes three-document synthesis, distant-section retrieval, conflicting complexity claims, a single-source question, and an unanswerable query. The seeded notes are for practice and smoke testing; add your own representative collection before presenting results as real-world performance.
 
 ## Known limitations
 

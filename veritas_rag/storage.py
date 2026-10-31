@@ -573,22 +573,25 @@ class StorageService:
 
         search_start = time.perf_counter()
 
-        # 1. MongoDB Atlas Path (if live)
-        if self.is_connected and self.collection is not None:
+        # 1. MongoDB Atlas Path (only when both required indexes are ready)
+        if self.is_connected and self.collection is not None and self.atlas_index_readiness()["ready"]:
             try:
                 citations, mongo_explain = self._search_mongodb_atlas(
                     query, query_embedding, filters, top_k, use_hybrid, search_mode
                 )
-                search_time = (time.perf_counter() - search_start) * 1000
-                total_time = (time.perf_counter() - start_time) * 1000
-                explain_plan["aggregation_pipeline"] = mongo_explain
-                explain_plan["retrieval_backend"] = "mongodb_atlas"
-                explain_plan["latency_breakdown"] = {
-                    "embedding_time_ms": round(embed_time, 2),
-                    "retrieval_time_ms": round(search_time, 2),
-                    "total_search_time_ms": round(total_time, 2)
-                }
-                return citations, explain_plan
+                if citations:
+                    search_time = (time.perf_counter() - search_start) * 1000
+                    total_time = (time.perf_counter() - start_time) * 1000
+                    explain_plan["aggregation_pipeline"] = mongo_explain
+                    explain_plan["retrieval_backend"] = "mongodb_atlas"
+                    explain_plan["latency_breakdown"] = {
+                        "embedding_time_ms": round(embed_time, 2),
+                        "retrieval_time_ms": round(search_time, 2),
+                        "total_search_time_ms": round(total_time, 2)
+                    }
+                    return citations, explain_plan
+                explain_plan["atlas_empty_results"] = True
+                print("[StorageService] Atlas returned no study passages; retrying against the local index.")
             except Exception as e:
                 explain_plan["atlas_error"] = str(e)
                 print(f"[StorageService] Atlas search error, using local fallback: {e}")
@@ -1039,10 +1042,8 @@ class StorageService:
         expected_dim = len(query_embedding)
         expected_model = embedding_service.current_model_name
 
-        if self.is_connected and self.collection is not None:
-            readiness = self.atlas_index_readiness()
-            if not readiness["ready"]:
-                raise RuntimeError(f"Atlas search indexes are not ready: {readiness}")
+        atlas_ready = bool(self.is_connected and self.collection is not None and self.atlas_index_readiness()["ready"])
+        if atlas_ready:
             mongo_filter = self._build_mongo_filter(filters)
             models = self.collection.distinct("embedding_model", mongo_filter)
             dimensions = self.collection.distinct("embedding_dim", mongo_filter)
@@ -1054,7 +1055,7 @@ class StorageService:
             models = list({chunk.embedding_model for chunk in candidates})
             dimensions = list({chunk.embedding_dim or len(chunk.embedding or []) for chunk in candidates})
 
-        if self.is_connected and self.collection is not None:
+        if atlas_ready:
             indexed_count = self.collection.count_documents(mongo_filter)
             if indexed_count and (not models or not dimensions):
                 raise RuntimeError(

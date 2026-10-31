@@ -28,6 +28,39 @@ class RetrievalReviewTests(unittest.TestCase):
         self.assertEqual(clauses[1], {"range": {"path": "metadata.year", "gte": 2023, "lte": 2025}})
         self.assertEqual(clauses[2], {"in": {"path": "doc_id", "value": ["doc-a", "doc-b"]}})
 
+    def test_empty_atlas_results_retry_local_search(self):
+        class ReadyCollection:
+            def list_search_indexes(self):
+                return [
+                    {"name": "vector_index", "status": "READY"},
+                    {"name": "chunk_text", "status": "READY"},
+                ]
+
+            def count_documents(self, query=None):
+                return 1
+
+            def distinct(self, field, query=None):
+                return ["local-hash-projection"] if field == "embedding_model" else [128]
+
+        storage = StorageService()
+        storage.is_connected = True
+        storage.collection = ReadyCollection()
+        citation = Citation(
+            id="chunk-a", doc_id="doc-a", doc_title="DSA notes", section="Arrays",
+            page_number=1, snippet="Array indexing takes constant time for direct access.",
+            similarity_score=0.8, combined_score=0.8,
+        )
+        with patch.object(storage, "_search_mongodb_atlas", return_value=([], [])) as atlas_search, patch.object(
+            storage, "_search_local_hybrid_traced", return_value=([citation], {"pre_rrf": [], "post_rrf": []})
+        ) as local_search:
+            citations, trace = storage.hybrid_search("array indexing", top_k=1, search_mode="dense")
+
+        self.assertEqual([item.id for item in citations], ["chunk-a"])
+        self.assertEqual(trace["retrieval_backend"], "local_fallback")
+        self.assertTrue(trace["atlas_empty_results"])
+        atlas_search.assert_called_once()
+        local_search.assert_called_once()
+
     def test_comparative_retrieval_limits_chunks_per_document_before_backfill(self):
         storage = StorageService()
         results = [

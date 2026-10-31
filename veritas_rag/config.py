@@ -2,7 +2,7 @@ import os
 from pydantic import BaseModel
 
 class AppConfig(BaseModel):
-    app_name: str = "NEXORA Study Buddy"
+    app_name: str = "NEXORA"
     tagline: str = "Your study space for understanding, practice, and revision"
     version: str = "1.0.0"
     owner_id: str = os.getenv("NEXORA_OWNER_ID", "local-owner")

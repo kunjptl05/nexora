@@ -17,70 +17,37 @@ class BenchmarkEvaluator:
     def __init__(self):
         self.default_test_cases: List[EvalTestCase] = [
             EvalTestCase(
-                id="eval_01",
-                query="What is the baseline solar panel efficiency standard and warranty period in the 2023 guidelines?",
-                expected_doc_titles=["Solar Policy Framework 2023"],
-                expected_conflict=False,
-                expected_abstention=False,
-                category="Single-Source Retrieval"
-            ),
-            EvalTestCase(
-                id="eval_02",
-                query="Compare solar panel efficiency and subsidies between the 2023 framework and the 2025 Modernization Act.",
-                expected_doc_titles=["Solar Policy Framework 2023", "CleanTech Modernization Act 2025"],
-                expected_conflict=True,
-                expected_abstention=False,
-                category="Multi-Source Synthesis & Conflict"
-            ),
-            EvalTestCase(
-                id="eval_03",
-                query="What battery storage roundtrip efficiency and degradation rates are reported for grid storage?",
-                expected_doc_titles=["Grid Storage Technical Whitepaper"],
-                expected_conflict=False,
-                expected_abstention=False,
-                category="Technical Performance"
-            ),
-            EvalTestCase(
-                id="eval_04",
-                query="What is the current market price of gold in India today?",
-                expected_doc_titles=[],
-                expected_conflict=False,
-                expected_abstention=True,
-                category="Out-of-Domain Abstention"
-            ),
-            EvalTestCase(
-                id="eval_05",
-                query="How much financial subsidy or rebate is offered for residential clean tech installations?",
-                expected_doc_titles=["Solar Policy Framework 2023", "CleanTech Modernization Act 2025"],
-                expected_conflict=True,
-                expected_abstention=False,
-                category="Multi-Source Numerical Comparison"
-            ),
-            EvalTestCase(
-                id="nexora_three_sources",
-                query="Explain how solar standards, grid battery efficiency, and the auth gateway incident each affect system reliability.",
-                expected_doc_titles=["Solar Policy Framework 2023", "Grid Storage Technical Whitepaper", "Q3 Production Incident Post-Mortem"],
-                expected_doc_ids=["doc_solar_2023", "doc_grid_storage", "doc_incident_postmortem"],
+                id="dsa_three_topics",
+                query="Explain how arrays, graph traversal, and dynamic programming solve different algorithm problems.",
+                expected_doc_titles=["DSA Notes: Arrays, Strings, and Hash Maps", "DSA Notes: Trees, Graphs, BFS, and DFS", "DSA Notes: Recursion and Dynamic Programming"],
+                expected_doc_ids=["doc_dsa_arrays_hashing", "doc_dsa_trees_graphs", "doc_dsa_dynamic_programming"],
                 category="Three-Document Synthesis"
             ),
             EvalTestCase(
-                id="nexora_distant_sections",
-                query="In the 2025 modernization act, what changed in efficiency criteria and smart inverter requirements?",
-                expected_doc_titles=["CleanTech Modernization Act 2025"],
-                expected_doc_ids=["doc_cleantech_2025"],
+                id="dsa_distant_sections",
+                query="In the complexity and searching notes, compare binary-search requirements with quicksort's worst-case time.",
+                expected_doc_titles=["DSA Notes: Complexity and Searching"],
+                expected_doc_ids=["doc_dsa_foundations"],
                 category="Distant-Section Retrieval"
             ),
             EvalTestCase(
-                id="nexora_conflicting_values",
-                query="What were the old and new residential subsidy amounts, and why did the amount change?",
-                expected_doc_titles=["Solar Policy Framework 2023", "CleanTech Modernization Act 2025"],
-                expected_doc_ids=["doc_solar_2023", "doc_cleantech_2025"],
+                id="dsa_complexity_conflict",
+                query="Are hash map lookups always constant time, or can they take linear time? Explain the conditions.",
+                expected_doc_titles=["DSA Notes: Arrays, Strings, and Hash Maps", "DSA Practice Notes: Complexity Claims to Check"],
+                expected_doc_ids=["doc_dsa_arrays_hashing", "doc_dsa_complexity_pitfalls"],
                 expected_conflict=True,
-                category="Conflicting Values"
+                category="Conflicting Complexity Claims"
             ),
             EvalTestCase(
-                id="nexora_unanswerable",
-                query="What was the exact score in Nexora's 2021 national chemistry exam?",
+                id="dsa_single_source",
+                query="What is the time complexity of Two Sum with a hash map, and what extra space does it use?",
+                expected_doc_titles=["DSA Notes: Arrays, Strings, and Hash Maps"],
+                expected_doc_ids=["doc_dsa_arrays_hashing"],
+                category="Single-Source Practice"
+            ),
+            EvalTestCase(
+                id="dsa_unanswerable",
+                query="What exact score did I receive on my 2021 university algorithms exam?",
                 expected_doc_titles=[],
                 expected_doc_ids=[],
                 expected_abstention=True,

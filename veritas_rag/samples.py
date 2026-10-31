@@ -1,137 +1,173 @@
 from typing import List, Dict, Any
-from veritas_rag.models import DocumentUploadRequest
 from veritas_rag.chunker import chunker
 from veritas_rag.storage import storage_service
 from veritas_rag.config import config
-import uuid
 import hashlib
+
+
+LEGACY_SAMPLE_IDS = {
+    "doc_solar_2023",
+    "doc_cleantech_2025",
+    "doc_grid_storage",
+    "doc_arch_spec",
+    "doc_incident_postmortem",
+}
 
 SAMPLE_DATASETS: List[Dict[str, Any]] = [
     {
-        "id": "doc_solar_2023",
-        "title": "Solar Policy Framework 2023",
-        "author": "Department of Energy & Climate (2023)",
-        "year": 2023,
-        "category": "Clean Energy",
-        "content": """# Solar Policy Framework 2023: Guidelines and Technical Standards
+        "id": "doc_dsa_foundations",
+        "title": "DSA Notes: Complexity and Searching",
+        "author": "NEXORA Study Notes",
+        "year": None,
+        "category": "Data Structures & Algorithms",
+        "content": """# Complexity and Searching
 
-## Executive Summary
-This document establishes regulatory baselines for commercial and residential photovoltaic deployment across federal and state grids.
+## Time and Space Complexity
+Big O describes how an algorithm's work grows as input size n grows. O(1) constant time stays bounded as n grows. O(log n) grows slowly by reducing the remaining problem, O(n) scans the input, and O(n log n) is common for efficient comparison sorting. O(n squared) often comes from comparing every pair. Space complexity measures extra memory used as input grows.
 
-## Technical Specifications & Efficiency
-Under Section 4.1, all approved monocrystalline photovoltaic modules must achieve a minimum tested solar panel efficiency of 18.0%. Modules operating under ambient operating temperatures must maintain degradation under 0.8% annually.
+## Linear Search
+Linear search checks items one at a time and works on unsorted data. Its best case is O(1), its average and worst cases are O(n), and its extra space is O(1).
 
-## Warranty and Guarantee Standards
-Installers must offer a minimum mandatory manufacturer warranty of 3 years covering inverters, racking systems, and panel output performance. Any defect reported within this period must be remediated at zero consumer cost.
+## Binary Search
+Binary search requires sorted data and random access, such as an array. Each comparison discards half the remaining range, giving O(log n) time and O(1) extra space in an iterative implementation. If the data is unsorted, sort it first or use linear search.
 
-## Financial Subsidies & Rebates
-Under the Residential Clean Energy Initiative (RCEI), qualifying households are eligible for a direct government subsidy rebate of $5,000 for installations exceeding 4.5 kW capacity. Application processing requires manual submission of municipal permits.
-
-## Grid Interconnection Requirements
-Interconnection approval is mandatory prior to grid tie-in. Systems exceeding 10 kW must deploy external bidirectional disconnection meters inspected by utility engineers."""
+## Sorting Algorithms
+Merge sort runs in O(n log n) time in the best, average, and worst cases and uses O(n) extra space for arrays. Heap sort runs in O(n log n) worst-case time and O(1) auxiliary array space. Quicksort averages O(n log n), but its worst case is O(n squared); randomized pivots reduce the chance of consistently poor partitions."""
     },
     {
-        "id": "doc_cleantech_2025",
-        "title": "CleanTech Modernization Act 2025",
-        "author": "Federal Energy Regulatory Commission (2025)",
-        "year": 2025,
-        "category": "Clean Energy",
-        "content": """# CleanTech Modernization Act 2025: Updated Mandates & Standards
+        "id": "doc_dsa_arrays_hashing",
+        "title": "DSA Notes: Arrays, Strings, and Hash Maps",
+        "author": "NEXORA Study Notes",
+        "year": None,
+        "category": "Data Structures & Algorithms",
+        "content": """# Arrays, Strings, and Hash Maps
 
-## Legislative Overview
-This Act updates and supersedes previous 2023 baseline provisions to accelerate high-efficiency solar and storage integration.
+## Arrays
+An array stores items in indexed positions. Reading or updating an item by index takes O(1) time. Inserting or removing near the beginning usually takes O(n) time because later items shift. A dynamic array grows its capacity occasionally; append is amortized O(1), although a resize itself copies O(n) items.
 
-## Modernized Efficiency Criteria
-To promote next-generation perovskite-silicon tandem cells, Section 3.2 raises the minimum required solar panel efficiency standard to 22.0%. Panels falling below this revised threshold are prohibited from receiving federal certifications.
+## Two Sum Pattern
+For Two Sum, scan the array once while a hash map stores each value's index. For each value x, check whether target minus x is already stored, then store x. This takes O(n) expected time and O(n) extra space. It returns a pair of indices without sorting the original array.
 
-## Extended Warranty Obligations
-Recognizing advancements in manufacturing reliability, the mandatory equipment warranty period is extended to 5 years (superseding the former 3-year term). Warranty obligations now encompass battery management micro-controllers.
+## Prefix Sums
+A prefix-sum array stores the cumulative total through each position. After O(n) preprocessing, the sum of a range from l through r is prefix[r + 1] minus prefix[l], so each range query takes O(1) time. Prefix sums are useful when many range-sum queries use an unchanged array.
 
-## Revised Subsidy Cap & Automatic Approval
-Due to budgetary realignment and declining panel production costs, the direct residential subsidy rebate is now capped at $3,500 per installation (revised downward from $5,000). However, approval is now automatically granted through the digital portal upon certificate upload.
-
-## Smart Inverter Standards
-All installations must incorporate IEEE 1547-2018 compliant smart inverters capable of autonomous voltage regulation and anti-islanding protection."""
+## Sliding Window
+For a contiguous subarray or substring, a sliding window expands and shrinks two boundaries while maintaining a running condition. When each item enters and leaves at most once, the scan is O(n). This pattern is often useful for a longest substring with a constraint or a fixed-size window sum."""
     },
     {
-        "id": "doc_grid_storage",
-        "title": "Grid Storage Technical Whitepaper",
-        "author": "National Renewable Energy Lab (2024)",
-        "year": 2024,
-        "category": "Clean Energy",
-        "content": """# Grid-Scale Battery Energy Storage Systems: Performance and Degradation
+        "id": "doc_dsa_linear_structures",
+        "title": "DSA Notes: Linked Lists, Stacks, and Queues",
+        "author": "NEXORA Study Notes",
+        "year": None,
+        "category": "Data Structures & Algorithms",
+        "content": """# Linked Lists, Stacks, and Queues
 
-## Storage Overview
-Large-scale lithium iron phosphate (LFP) and sodium-ion battery chemistries serve as essential grid stabilizing assets for variable solar irradiance.
+## Linked Lists
+A singly linked list stores a value and a pointer to the next node. Searching for a value or reaching index i takes O(n) time. Inserting at the head takes O(1). Inserting after a node whose reference is already known also takes O(1), but finding that node still takes O(n).
 
-## Roundtrip Efficiency & Metrics
-Industrial utility-scale battery storage facilities report an average AC-to-AC roundtrip efficiency of 86.5% under standard cycling profiles (1 C charge / 1 C discharge). Parasitic HVAC cooling loads reduce net roundtrip efficiency to approximately 82.0% in high ambient thermal environments.
+## Stacks
+A stack follows last in, first out (LIFO). Push, pop, and peek take O(1) time when implemented with a dynamic array or a linked-list head. Stacks are useful for undo history, expression parsing, depth-first search, and matching brackets.
 
-## Degradation Rates & Lifecycle
-State-of-the-art LFP cells exhibit capacity degradation rates of less than 1.8% per 1,000 equivalent full cycles. Cell end-of-life is defined when retained capacity drops below 70% of nominal rating, typically attained after 6,500 to 8,000 cycles.
+## Queues
+A queue follows first in, first out (FIFO). Enqueue and dequeue take O(1) time with a linked list or a circular buffer. Removing the first item from a plain array may take O(n) because the remaining items shift. Queues are useful for scheduling and breadth-first search.
 
-## Capital Expenditure Trends
-System-level battery storage costs have declined to $195 per kWh for 4-hour duration installations, with battery cells representing 48% of total balance of system costs."""
+## Choosing a Structure
+Use an array for fast indexed access. Use a stack when the newest item should be handled first. Use a queue when the oldest waiting item should be handled first. Use a linked list when frequent insertions at known nodes matter more than indexed access."""
     },
     {
-        "id": "doc_arch_spec",
-        "title": "Auth Service Architecture Spec v3",
-        "author": "Core Platform Engineering (2025)",
-        "year": 2025,
-        "category": "Software Infrastructure",
-        "content": """# Auth Service Architecture Spec v3
+        "id": "doc_dsa_trees_graphs",
+        "title": "DSA Notes: Trees, Graphs, BFS, and DFS",
+        "author": "NEXORA Study Notes",
+        "year": None,
+        "category": "Data Structures & Algorithms",
+        "content": """# Trees and Graphs
 
-## System Architecture
-The Authentication Service acts as the centralized identity provider for the distributed microservices ecosystem. It issues cryptographically signed JWT tokens backed by Ed25519 asymmetric keypairs.
+## Binary Search Trees
+A binary search tree stores smaller keys to the left and larger keys to the right. Search, insert, and delete take O(h), where h is the tree height. A balanced tree has height O(log n); a badly skewed tree can have height O(n). Inorder traversal of a binary search tree visits keys in sorted order.
 
-## SLA & Latency Requirements
-Target P99 authentication latency is bounded at 25 ms. Token verification is performed statelessly across API edge gateways using cached public keys refreshed every 6 hours.
+## Breadth-First Search
+Breadth-first search (BFS) explores a graph level by level using a queue. With an adjacency list it takes O(V + E) time and O(V) extra space, where V is the number of vertices and E is the number of edges. BFS finds shortest paths by edge count in an unweighted graph.
 
-## High Availability & Failover
-The service is deployed in active-active topology across three availability zones. Distributed Redis clusters handle session revocation blacklists with a replication timeout limit of 15 ms."""
+## Depth-First Search
+Depth-first search (DFS) follows one path as far as possible before backtracking. It uses recursion or an explicit stack and takes O(V + E) time with an adjacency list. DFS is useful for connected components, cycle detection, and topological sorting of a directed acyclic graph.
+
+## Dijkstra's Algorithm
+Dijkstra's algorithm finds shortest paths from one source when edge weights are non-negative. With an adjacency list and a binary heap it takes O((V + E) log V) time. It is not correct for graphs with negative-weight edges; Bellman-Ford handles negative edges when there is no reachable negative cycle."""
     },
     {
-        "id": "doc_incident_postmortem",
-        "title": "Q3 Production Incident Post-Mortem",
-        "author": "Site Reliability Engineering (2025)",
-        "year": 2025,
-        "category": "Software Infrastructure",
-        "content": """# Incident Post-Mortem: Auth Gateway Cascade Failure (INC-4092)
+        "id": "doc_dsa_dynamic_programming",
+        "title": "DSA Notes: Recursion and Dynamic Programming",
+        "author": "NEXORA Study Notes",
+        "year": None,
+        "category": "Data Structures & Algorithms",
+        "content": """# Recursion and Dynamic Programming
 
-## Incident Summary
-On August 14, 2025, the primary token verification gateway experienced a cascading latency spike, leading to a 14-minute disruption of user sign-in workflows.
+## Recursion
+Recursive algorithms solve a problem by calling themselves on smaller inputs. Every recursive solution needs a base case and progress toward that case. The call stack uses memory proportional to recursion depth.
 
-## Root Cause Analysis
-During a network partition between AZ-1 and AZ-2, the session revocation blacklist sync exceeded the standard 15 ms replication timeout, peaking at 480 ms. This saturated edge connection pools.
+## Dynamic Programming
+Dynamic programming applies when subproblems overlap and an optimal solution can be composed from smaller subproblems. Memoization stores answers during top-down recursion. Tabulation builds answers bottom up in a table. Both avoid repeating the same subproblem.
 
-## Remediation Actions
-1. Upgraded edge proxy circuit breaker trip thresholds.
-2. Implemented local fallback memory caching for revocation lists during temporary network partitions.
-3. Updated monitoring alerts for replication latency exceeding 50 ms."""
-    }
+## Fibonacci Example
+Naive recursive Fibonacci repeats work and takes O(2 to the n) time. Memoization or tabulation computes each value once, taking O(n) time. A table uses O(n) space; an iterative version that keeps only the previous two values uses O(1) extra space.
+
+## Problem-Solving Steps
+Define the state in plain language, write the transition between states, specify base cases, and choose an evaluation order. Check the time and space cost from the number of states and transitions per state. For example, a grid with r rows and c columns may have O(r times c) states."""
+    },
+    {
+        "id": "doc_dsa_complexity_pitfalls",
+        "title": "DSA Practice Notes: Complexity Claims to Check",
+        "author": "NEXORA Practice Set",
+        "year": None,
+        "category": "Data Structures & Algorithms",
+        "content": """# Complexity Claims to Check
+
+## Hash Map Lookup
+Practice claim: hash map lookup is always O(1), regardless of input or collisions.
+
+This claim is too strong. Hash map lookup is O(1) on average under a well-distributed hash function and controlled load factor, but can be O(n) in the worst case when many keys collide. State whether a complexity is average or worst case when explaining an answer.
+
+## Search Requirements
+Practice claim: binary search is a faster drop-in replacement for linear search on any collection.
+
+This claim omits a requirement. Binary search needs sorted data and efficient access to the middle item. Linear search works on unsorted sequences. Choose based on the data's ordering and representation."""
+    },
 ]
 
+
 def load_sample_datasets(force_reload: bool = False):
-    """Initializes knowledge base with rich multi-document datasets idempotently."""
+    """Remove the old energy/software showcase and seed a small DSA learning set."""
+    removed = 0
+    for doc_id in LEGACY_SAMPLE_IDS:
+        record = storage_service._documents.get(doc_id)
+        if record and (record.get("metadata") or {}).get("owner_id") == config.owner_id:
+            storage_service.delete_document(doc_id)
+            removed += 1
+
     loaded_count = 0
     for item in SAMPLE_DATASETS:
-        if not force_reload and item["id"] in storage_service._documents:
+        existing = storage_service._documents.get(item["id"])
+        if existing and (existing.get("metadata") or {}).get("owner_id") == config.owner_id and not force_reload:
             continue
+        if existing and (existing.get("metadata") or {}).get("owner_id") == config.owner_id:
+            storage_service.delete_document(item["id"])
+
         meta = {
             "title": item["title"],
             "author": item["author"],
             "year": item["year"],
             "category": item["category"],
-            "source_type": "preloaded",
+            "source_type": "study_sample",
             "owner_id": config.owner_id,
             "content_type": "text/plain",
             "uploaded_at": 0,
             "file_size_bytes": len(item["content"].encode("utf-8")),
-            "content_hash": hashlib.sha256(item["content"].encode("utf-8")).hexdigest()[:16]
+            "content_hash": hashlib.sha256(item["content"].encode("utf-8")).hexdigest()[:16],
         }
         storage_service.add_document(item["id"], item["title"], meta, item["content"])
         chunks = chunker.chunk_document(item["id"], item["title"], item["content"], meta)
         storage_service.add_chunks(chunks)
         loaded_count += 1
-    if loaded_count > 0:
-        print(f"[Samples] Successfully loaded {loaded_count} benchmark documents.")
+
+    if loaded_count or removed:
+        print(f"[Samples] Replaced legacy demos with {loaded_count} DSA study notes.")
