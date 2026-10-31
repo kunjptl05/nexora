@@ -54,7 +54,7 @@ async function fetchStatus() {
         sidebarStatus.className = "font-bold text-[10.5px] text-emerald-200";
       }
       if (sidebarDot) sidebarDot.className = "w-2 h-2 rounded-full bg-amber-400";
-      if (kbHeadline) kbHeadline.textContent = "Local In-Memory Vector & BM25 Fallback Engine (Zero-Config Active)";
+      if (kbHeadline) kbHeadline.textContent = "Local In-Memory Vector + BM25 Engine (Zero-Config Active)";
     }
 
     if (sidebarStats) {
@@ -87,7 +87,7 @@ function switchTab(tabId) {
     conflict: {
       title: "Conflict Radar · Claim Reconciliation",
       icon: "git-compare",
-      subtext: "Autonomous Multi-Source Discrepancy & Version Delta Radar"
+      subtext: "Potential differences across retrieved sources"
     },
     eval: {
       title: "Benchmark & Ablation Suite · Retrieval Comparison",
@@ -636,7 +636,7 @@ function openPassageModal(citationId) {
   const badges = document.getElementById('modalBadges');
   badges.innerHTML = `
     <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[10px] font-bold">
-      Semantic Match: ${(cit.similarity_score * 100).toFixed(1)}%
+      Dense similarity score: ${(cit.similarity_score * 100).toFixed(1)}%
     </span>
     <span class="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-800 border border-stone-200 font-mono text-[10px] font-bold">
       Keyword Overlap: ${(cit.keyword_score * 100).toFixed(1)}%
@@ -700,10 +700,10 @@ function initDefaultConflictDashboard() {
     }
   ];
 
-  renderConflictDashboardCards(defaultShowcaseConflicts);
+  renderConflictDashboardCards(defaultShowcaseConflicts, true);
 }
 
-function renderConflictDashboardCards(conflicts) {
+function renderConflictDashboardCards(conflicts, isIllustrative = false) {
   const container = document.getElementById('conflictDashboardCards');
   if (!container || !conflicts) return;
 
@@ -712,9 +712,9 @@ function renderConflictDashboardCards(conflicts) {
       <div class="flex items-center justify-between">
         <h3 class="text-xs font-extrabold text-[#0F3E33] uppercase tracking-wider flex items-center gap-1.5">
           <i data-lucide="git-commit" class="w-4 h-4 text-emerald-700"></i>
-          <span>Reconciled Discrepancies & Version Deltas (${conflicts.length})</span>
+          <span>${isIllustrative ? "Illustrative conflict examples" : "Potential differences found"} (${conflicts.length})</span>
         </h3>
-        <span class="text-[10px] text-stone-500 font-semibold">Side-by-Side Source Citation Comparison</span>
+        <span class="text-[10px] text-stone-500 font-semibold">${isIllustrative ? "Synthetic examples · not results from your documents" : "Review both source passages before drawing a conclusion"}</span>
       </div>
 
       ${conflicts.map(cf => `
