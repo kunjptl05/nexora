@@ -1,4 +1,6 @@
-# Nexora — Evidence-first Document Intelligence
+# NEXORA Study Buddy
+
+NEXORA Study Buddy helps learners chat with their own study materials, get simple evidence-backed explanations, compare sources, and identify topics to revisit. Ask the Study Chat to explain a concept simply, create practice questions, make flashcards, or build an exam revision outline from uploaded materials. Citations link back to the original uploaded file at its cited PDF page; webpage and text sources open in a readable source view.
 
 Nexora helps users search across multiple documents, inspect source passages, and identify **potentially conflicting claims**. Answers include document references so users can verify the evidence themselves.
 
@@ -87,7 +89,7 @@ If PowerShell blocks activation, run the app using the venv interpreter directly
 
 ## Configuration (optional)
 
-Set environment variables in the same PowerShell window before starting the server:
+Set environment variables in the same PowerShell window before starting the server. Atlas retrieval requires Gemini embeddings; local development can use the local fallback without credentials.
 
 ```powershell
 $env:GEMINI_API_KEY = "your-gemini-api-key"
@@ -95,13 +97,16 @@ $env:MONGODB_URI = "mongodb+srv://..."
 $env:MONGODB_DB = "nexora_db"
 $env:MONGODB_COLLECTION = "knowledge_chunks"
 $env:MONGODB_VECTOR_INDEX = "vector_index"
+$env:NEXORA_OWNER_ID = "my-study-space"
 ```
 
 Do not commit API keys, database credentials, uploaded files, or private document content.
 
 ### MongoDB Atlas indexes
 
-The vector index named `vector_index` must target the `embedding` field and use the same `numDimensions` as the active embedding model. The example below is for a 768-dimensional embedding output:
+Atlas retrieval uses Gemini `gemini-embedding-001` at 768 dimensions. Before connecting a collection that contains legacy 128-dimensional local vectors, configure `GEMINI_API_KEY`; connection/re-embedding safeguards must ensure all stored chunks are regenerated in the Gemini space before vector queries. Do not mix local hash vectors and Gemini vectors. The readiness endpoint reports both required Atlas indexes and query traces report whether Atlas actually executed or the local fallback answered.
+
+Create the vector index named `vector_index` on `embedding` (768 dimensions) with metadata filters:
 
 ```json
 {
@@ -109,12 +114,45 @@ The vector index named `vector_index` must target the `embedding` field and use 
     { "type": "vector", "path": "embedding", "numDimensions": 768, "similarity": "cosine" },
     { "type": "filter", "path": "metadata.category" },
     { "type": "filter", "path": "metadata.year" },
+    { "type": "filter", "path": "metadata.uploaded_at" },
+    { "type": "filter", "path": "metadata.content_type" },
+    { "type": "filter", "path": "metadata.owner_id" },
     { "type": "filter", "path": "doc_id" }
   ]
 }
 ```
 
-For Atlas lexical search, create a Search index named `chunk_text` on `content`, `doc_title`, and `section`. The query filter also uses `metadata.category`, `metadata.year`, and `doc_id`; map these fields as filterable fields in the Search index. Confirm the index is ready before using Atlas lexical or hybrid retrieval.
+Create a separate Atlas Search index named `chunk_text` for hybrid lexical retrieval. Map `content`, `doc_title`, and `section` as strings and `metadata.owner_id`, `metadata.content_type`, `metadata.uploaded_at`, `metadata.category`, `metadata.year`, and `doc_id` as filter fields. Both `vector_index` and `chunk_text` must report `READY` before Atlas retrieval is considered ready. `GET /api/status` reports each index state. Atlas indexes are provisioned in Atlas; the app does not create them automatically.
+
+Example Atlas Search index definition for `chunk_text`:
+
+```json
+{
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "content": { "type": "string" },
+      "doc_title": { "type": "string" },
+      "section": { "type": "string" },
+      "doc_id": { "type": "token" },
+      "metadata": {
+        "type": "document",
+        "fields": {
+          "category": { "type": "token" },
+          "year": { "type": "number" },
+          "uploaded_at": { "type": "number" },
+          "content_type": { "type": "token" },
+          "owner_id": { "type": "token" }
+        }
+      }
+    }
+  }
+}
+```
+
+Metadata filters include upload date bounds, content type, category, year, and document IDs. The `owner_id` supplied in request JSON is ignored: each deployment scopes reads, search, citation source access, and deletes to its server-configured `NEXORA_OWNER_ID`. This is deployment-level single-owner isolation, not user authentication. Do not expose a shared deployment to multiple users until authenticated identities and per-user authorization are added.
+
+Uploads accept PDF, DOCX, TXT, Markdown, or a public webpage URL. Webpage ingestion rejects local/private IP addresses and redirects, and limits fetched content to 5 MB. Uploaded source files are stored in `data/sources`; keep this directory private and backed up with the local store.
 
 Nexora stores document-level raw text and extracted field values in the Atlas `documents` collection, and source lines generated by direct field lookup in `field_extractions`. Keep both collections access-controlled because they may contain personal information from uploaded forms. Resetting or deleting a document removes the corresponding field evidence records.
 
@@ -163,7 +201,7 @@ Use the **Benchmark & Ablation** screen or send:
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/eval/run
 ```
 
-The evaluation response reports the configured sample metrics and per-case results. Interpret the output in the context of the evaluation set; do not present these numbers as universal accuracy guarantees.
+The evaluation response reports expected and retrieved source IDs per case. The labelled set includes three-document synthesis, distant-section retrieval, conflicting values, and unanswerable queries, alongside the original sample cases. The seeded sources remain synthetic demonstrations; add your own representative collection before presenting results as real-world performance.
 
 ## Known limitations
 
@@ -175,6 +213,7 @@ The evaluation response reports the configured sample metrics and per-case resul
 - Atlas metadata and extracted-field records are loaded from the separate `documents` collection; older deployments may need to re-upload documents or migrate records if that collection was never populated.
 - Query-result report exports are held in the running process's bounded in-memory cache. Re-run a query after restarting the server before exporting its report.
 - Authentication and role-based access control are not yet implemented. Keep the server local and do not deploy it as a public multi-user service in its current form.
+- Study quiz, flashcard, revision-plan, and knowledge-gap requests use the same evidence-grounded chat workflow; they are not persistent learner progress or adaptive spaced-repetition features.
 
 ## Before production
 

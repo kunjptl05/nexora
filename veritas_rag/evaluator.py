@@ -55,6 +55,36 @@ class BenchmarkEvaluator:
                 expected_conflict=True,
                 expected_abstention=False,
                 category="Multi-Source Numerical Comparison"
+            ),
+            EvalTestCase(
+                id="nexora_three_sources",
+                query="Explain how solar standards, grid battery efficiency, and the auth gateway incident each affect system reliability.",
+                expected_doc_titles=["Solar Policy Framework 2023", "Grid Storage Technical Whitepaper", "Q3 Production Incident Post-Mortem"],
+                expected_doc_ids=["doc_solar_2023", "doc_grid_storage", "doc_incident_postmortem"],
+                category="Three-Document Synthesis"
+            ),
+            EvalTestCase(
+                id="nexora_distant_sections",
+                query="In the 2025 modernization act, what changed in efficiency criteria and smart inverter requirements?",
+                expected_doc_titles=["CleanTech Modernization Act 2025"],
+                expected_doc_ids=["doc_cleantech_2025"],
+                category="Distant-Section Retrieval"
+            ),
+            EvalTestCase(
+                id="nexora_conflicting_values",
+                query="What were the old and new residential subsidy amounts, and why did the amount change?",
+                expected_doc_titles=["Solar Policy Framework 2023", "CleanTech Modernization Act 2025"],
+                expected_doc_ids=["doc_solar_2023", "doc_cleantech_2025"],
+                expected_conflict=True,
+                category="Conflicting Values"
+            ),
+            EvalTestCase(
+                id="nexora_unanswerable",
+                query="What was the exact score in Nexora's 2021 national chemistry exam?",
+                expected_doc_titles=[],
+                expected_doc_ids=[],
+                expected_abstention=True,
+                category="Unanswerable"
             )
         ]
 
@@ -151,6 +181,8 @@ class BenchmarkEvaluator:
                 precision_at_k=round(precision_at_3, 3),
                 retrieved_titles=retrieved_titles[:3],
                 expected_titles=t.expected_doc_titles,
+                retrieved_doc_ids=list(dict.fromkeys(c.doc_id for c in response.citations)),
+                expected_doc_ids=t.expected_doc_ids,
                 conflict_detected=has_conflict,
                 expected_conflict=t.expected_conflict,
                 abstained=response.abstained,

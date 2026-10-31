@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from veritas_rag.models import DocumentUploadRequest
 from veritas_rag.chunker import chunker
 from veritas_rag.storage import storage_service
+from veritas_rag.config import config
 import uuid
 import hashlib
 
@@ -122,6 +123,9 @@ def load_sample_datasets(force_reload: bool = False):
             "year": item["year"],
             "category": item["category"],
             "source_type": "preloaded",
+            "owner_id": config.owner_id,
+            "content_type": "text/plain",
+            "uploaded_at": 0,
             "file_size_bytes": len(item["content"].encode("utf-8")),
             "content_hash": hashlib.sha256(item["content"].encode("utf-8")).hexdigest()[:16]
         }

@@ -15,7 +15,7 @@ class EmbeddingService:
     def __init__(self):
         self._client = None
         self._api_key = config.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-        self.vector_dim = 128
+        self.vector_dim = config.gemini_embedding_dimensions
         self.current_model_name = "local-hash-projection"
         if self._api_key:
             self.configure_key(self._api_key)
@@ -30,7 +30,7 @@ class EmbeddingService:
         try:
             from google import genai
             self._client = genai.Client(api_key=self._api_key)
-            self.vector_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
+            self.vector_dim = config.gemini_embedding_dimensions
             self.current_model_name = config.embedding_model
         except Exception as exc:
             self._client = None
@@ -55,7 +55,7 @@ class EmbeddingService:
             raise RuntimeError("Gemini embedding client is not configured.")
         from google.genai import types
 
-        kwargs = {"output_dimensionality": int(os.getenv("EMBEDDING_DIMENSIONS", "768"))}
+        kwargs = {"output_dimensionality": config.gemini_embedding_dimensions}
         if "embedding-2" not in config.embedding_model:
             kwargs["task_type"] = task_type
         response = self._client.models.embed_content(
@@ -69,7 +69,7 @@ class EmbeddingService:
             )
         vectors = [self._normalize(list(item.values)) for item in response.embeddings]
         dimensions = {len(vector) for vector in vectors}
-        if len(dimensions) != 1 or not dimensions or 0 in dimensions:
+        if dimensions != {config.gemini_embedding_dimensions}:
             raise RuntimeError(f"Embedding provider returned inconsistent dimensions: {sorted(dimensions)}")
         return vectors
 

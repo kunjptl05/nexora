@@ -66,8 +66,11 @@ class StorageService:
                 with open(self._data_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self._documents = data.get("documents", {})
+                    for record in self._documents.values():
+                        record.setdefault("metadata", {}).setdefault("owner_id", config.owner_id)
                     chunks_raw = data.get("chunks", {})
                     for cid, cdata in chunks_raw.items():
+                        cdata.setdefault("metadata", {}).setdefault("owner_id", config.owner_id)
                         self._chunks[cid] = DocumentChunk(**cdata)
                 print(f"[StorageService] Restored {len(self._documents)} documents and {len(self._chunks)} chunks from disk.")
             except Exception as e:
@@ -79,6 +82,10 @@ class StorageService:
             self.is_connected = False
             self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
             return False, "No MongoDB URI provided. Running on Local Fallback Engine."
+        if not config.gemini_api_key:
+            self.is_connected = False
+            self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
+            return False, "Configure GEMINI_API_KEY before connecting Atlas; Atlas retrieval requires the configured Gemini embedding space."
 
         try:
             from pymongo import MongoClient
@@ -93,18 +100,45 @@ class StorageService:
             config.mongodb_database = db_name
             config.mongodb_collection = coll_name
 
+            # This app's existing collections predate owner metadata and are single-deployment stores.
+            # Migrate only unowned legacy records; never rewrite an explicitly assigned owner.
+            self.collection.update_many(
+                {"metadata.owner_id": {"$exists": False}},
+                {"$set": {"metadata.owner_id": config.owner_id}},
+            )
+            self.db["documents"].update_many(
+                {"metadata.owner_id": {"$exists": False}},
+                {"$set": {"metadata.owner_id": config.owner_id}},
+            )
+
             # Ensure unique index on chunk id to prevent duplicate inserts
             try:
                 self.collection.create_index("id", unique=True, background=True)
             except Exception:
                 pass  # Index may already exist
 
+            expected_model = embedding_service.current_model_name
+            expected_dim = embedding_service.vector_dim
+            local_mismatch = any(
+                chunk.embedding_model != expected_model or chunk.embedding_dim != expected_dim
+                for chunk in self._chunks.values()
+            )
+            owner_filter = {"metadata.owner_id": config.owner_id}
+            atlas_models = self.collection.distinct("embedding_model", owner_filter)
+            atlas_dimensions = self.collection.distinct("embedding_dim", owner_filter)
+            atlas_mismatch = bool(self.collection.count_documents(owner_filter)) and (
+                atlas_models != [expected_model] or atlas_dimensions != [expected_dim]
+            )
+            if local_mismatch or atlas_mismatch:
+                # Re-embed the full collection before Atlas retrieval; fail closed on provider errors.
+                self.re_embed_all_chunks()
+
             # Idempotently sync local chunks and document records into Atlas.
             from pymongo import UpdateOne
             if self._chunks:
                 operations = [
                     UpdateOne({"id": chunk.id}, {"$set": chunk.model_dump()}, upsert=True)
-                    for chunk in self._chunks.values()
+                    for chunk in self._chunks.values() if self._matches_filter(chunk, None)
                 ]
                 if operations:
                     self.collection.bulk_write(operations, ordered=False)
@@ -112,47 +146,67 @@ class StorageService:
                 document_operations = [
                     UpdateOne({"id": doc_id}, {"$set": record}, upsert=True)
                     for doc_id, record in self._documents.items()
+                    if (record.get("metadata") or {}).get("owner_id") == config.owner_id
                 ]
                 if document_operations:
                     self.db["documents"].bulk_write(document_operations, ordered=False)
 
             self._load_documents_from_atlas()
-            return True, "Successfully connected to MongoDB Atlas Vector Search!"
+            readiness = self.atlas_index_readiness()
+            return True, "Connected to Atlas. " + ("Both search indexes are ready." if readiness["ready"] else "Search indexes are not ready; retrieval will use the local fallback until vector_index and chunk_text report READY.")
         except Exception as e:
             self.is_connected = False
             self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
             return False, f"Could not connect to MongoDB Atlas ({str(e)}). Active in Local In-Memory Fallback Mode."
 
+    def atlas_index_readiness(self) -> Dict[str, Any]:
+        result = {"vector_index": "unavailable", "chunk_text": "unavailable", "ready": False}
+        if not (self.is_connected and self.collection is not None):
+            return result
+        try:
+            indexes = list(self.collection.list_search_indexes())
+            states = {item.get("name"): item.get("status", "unknown") for item in indexes}
+            result["vector_index"] = states.get(config.vector_index_name, "missing")
+            result["chunk_text"] = states.get("chunk_text", "missing")
+            result["ready"] = result["vector_index"] == "READY" and result["chunk_text"] == "READY"
+        except Exception as exc:
+            result["error"] = str(exc)
+        return result
+
     def count_chunks(self) -> int:
         """Returns total chunk count across active storage backend."""
         if self.is_connected and self.collection is not None:
             try:
-                return self.collection.count_documents({})
+                return self.collection.count_documents({"metadata.owner_id": config.owner_id})
             except Exception:
                 pass
-        return len(self._chunks)
+        return sum(1 for chunk in self._chunks.values() if self._matches_filter(chunk, None))
 
     def count_documents(self) -> int:
         """Returns total document count across the active storage backend."""
         if self.is_connected and self.db is not None:
             try:
-                return self.db["documents"].count_documents({})
+                return self.db["documents"].count_documents({"metadata.owner_id": config.owner_id})
             except Exception as exc:
                 print(f"[StorageService] Atlas document count failed: {exc}")
-        return len(self._documents)
+        return sum(1 for record in self._documents.values() if (record.get("metadata") or {}).get("owner_id") == config.owner_id)
 
-    def reset(self):
+    def reset(self, owner_id: Optional[str] = None):
         """Cleanses knowledge base in both MongoDB Atlas (if connected) and local cache."""
+        owner_id = owner_id or config.owner_id
+        doc_ids = [doc_id for doc_id, record in self._documents.items() if (record.get("metadata") or {}).get("owner_id") == owner_id]
         if self.is_connected and self.collection is not None:
             try:
-                self.collection.delete_many({})
-                self.db["documents"].delete_many({})
-                self.db["field_extractions"].delete_many({})
+                owner_query = {"metadata.owner_id": owner_id}
+                self.collection.delete_many(owner_query)
+                self.db["documents"].delete_many(owner_query)
+                if doc_ids:
+                    self.db["field_extractions"].delete_many({"doc_id": {"$in": doc_ids}})
             except Exception as e:
                 print(f"[StorageService] Failed to clear Atlas collections: {e}")
-        self._chunks.clear()
-        self._documents.clear()
-        self._field_chunks.clear()
+        self._chunks = {cid: chunk for cid, chunk in self._chunks.items() if (chunk.metadata or {}).get("owner_id") != owner_id}
+        self._documents = {doc_id: record for doc_id, record in self._documents.items() if (record.get("metadata") or {}).get("owner_id") != owner_id}
+        self._field_chunks = {cid: chunk for cid, chunk in self._field_chunks.items() if (chunk.metadata or {}).get("owner_id") != owner_id}
         self._query_history.clear()
         self._save_to_disk()
 
@@ -170,9 +224,9 @@ class StorageService:
 
     def re_embed_all_chunks(self) -> int:
         """Re-embeds all existing chunks when the embedding key or model switches."""
-        chunk_map = {chunk.id: chunk for chunk in self._chunks.values()}
+        chunk_map = {chunk.id: chunk for chunk in self._chunks.values() if self._matches_filter(chunk, None)}
         if self.is_connected and self.collection is not None:
-            records = self.collection.find({}, {"_id": 0})
+            records = self.collection.find({"metadata.owner_id": config.owner_id}, {"_id": 0})
             for record in records:
                 chunk = DocumentChunk(**record)
                 chunk_map[chunk.id] = chunk
@@ -216,6 +270,9 @@ class StorageService:
         return len(chunk_list)
 
     def add_document(self, doc_id: str, title: str, metadata: Dict[str, Any], raw_text: str = ""):
+        metadata = dict(metadata)
+        metadata.setdefault("owner_id", config.owner_id)
+        metadata.setdefault("uploaded_at", time.time())
         doc_record = {
             "id": doc_id,
             "title": title,
@@ -304,8 +361,8 @@ class StorageService:
 
         if self.is_connected and self.db is not None:
             try:
-                self.collection.delete_many({"doc_id": doc_id})
-                self.db["documents"].delete_one({"id": doc_id})
+                self.collection.delete_many({"doc_id": doc_id, "metadata.owner_id": config.owner_id})
+                self.db["documents"].delete_one({"id": doc_id, "metadata.owner_id": config.owner_id})
                 self.db["field_extractions"].delete_many({"doc_id": doc_id})
             except Exception as exc:
                 print(f"[StorageService] Failed to delete document from Atlas: {exc}")
@@ -327,7 +384,7 @@ class StorageService:
     def list_documents(self) -> List[Dict[str, Any]]:
         if self.is_connected and not self._documents:
             self._load_documents_from_atlas()
-        return list(self._documents.values())
+        return [record for record in self._documents.values() if (record.get("metadata") or {}).get("owner_id") == config.owner_id]
 
     def search_labelled_fields(
         self, field_key: str, filters: Optional[SearchFilters] = None
@@ -340,6 +397,8 @@ class StorageService:
 
         matches: List[Dict[str, Any]] = []
         for doc_id, record in records.items():
+            if (record.get("metadata") or {}).get("owner_id") != config.owner_id:
+                continue
             if filters and filters.doc_ids and doc_id not in filters.doc_ids:
                 continue
             metadata = record.get("metadata") or {}
@@ -349,6 +408,13 @@ class StorageService:
             if filters and filters.min_year and (year or 0) < filters.min_year:
                 continue
             if filters and filters.max_year and (year or 9999) > filters.max_year:
+                continue
+            if filters and filters.content_type and metadata.get("content_type") != filters.content_type:
+                continue
+            uploaded = metadata.get("uploaded_at", 0)
+            if filters and filters.upload_after and uploaded < filters.upload_after:
+                continue
+            if filters and filters.upload_before and uploaded > filters.upload_before:
                 continue
 
             fields = record.get("extracted_fields")
@@ -493,6 +559,7 @@ class StorageService:
             "headline": "MongoDB Atlas Vector Search: connected" if self.is_connected else "Local Vector + BM25 (Persistent Local Store)",
             "mode": self.active_mode,
             "search_mode": search_mode,
+            "retrieval_backend": "atlas_pending" if self.is_connected else "local",
             "query": query,
             "filters_applied": filters.model_dump() if filters else None,
             "num_candidates_scanned": self.count_chunks(),
@@ -515,6 +582,7 @@ class StorageService:
                 search_time = (time.perf_counter() - search_start) * 1000
                 total_time = (time.perf_counter() - start_time) * 1000
                 explain_plan["aggregation_pipeline"] = mongo_explain
+                explain_plan["retrieval_backend"] = "mongodb_atlas"
                 explain_plan["latency_breakdown"] = {
                     "embedding_time_ms": round(embed_time, 2),
                     "retrieval_time_ms": round(search_time, 2),
@@ -533,6 +601,7 @@ class StorageService:
         total_time = (time.perf_counter() - start_time) * 1000
 
         explain_plan["candidates_pre_rrf"] = trace_details.get("pre_rrf", [])
+        explain_plan["retrieval_backend"] = "local_fallback" if self.is_connected else "local"
         explain_plan["candidates_post_rrf"] = trace_details.get("post_rrf", [])
         explain_plan["latency_breakdown"] = {
             "embedding_time_ms": round(embed_time, 2),
@@ -851,9 +920,9 @@ class StorageService:
 
     def _build_atlas_search_filters(self, filters: Optional[SearchFilters]) -> List[Dict[str, Any]]:
         """Translate document filters to Atlas Search compound.filter clauses."""
-        if not filters:
-            return []
         clauses: List[Dict[str, Any]] = []
+        if not filters:
+            return [{"equals": {"path": "metadata.owner_id", "value": config.owner_id}}]
         if filters.category:
             clauses.append({"equals": {"path": "metadata.category", "value": filters.category}})
         if filters.min_year or filters.max_year:
@@ -865,6 +934,16 @@ class StorageService:
             clauses.append({"range": year_range})
         if filters.doc_ids:
             clauses.append({"in": {"path": "doc_id", "value": filters.doc_ids}})
+        if filters.content_type:
+            clauses.append({"equals": {"path": "metadata.content_type", "value": filters.content_type}})
+        if filters.upload_after or filters.upload_before:
+            uploaded_range: Dict[str, Any] = {"path": "metadata.uploaded_at"}
+            if filters.upload_after:
+                uploaded_range["gte"] = filters.upload_after
+            if filters.upload_before:
+                uploaded_range["lte"] = filters.upload_before
+            clauses.append({"range": uploaded_range})
+        clauses.append({"equals": {"path": "metadata.owner_id", "value": config.owner_id}})
         return clauses
 
     def _is_comparative_query(self, query: str) -> bool:
@@ -905,9 +984,9 @@ class StorageService:
         return selected
 
     def _build_mongo_filter(self, filters: Optional[SearchFilters]) -> Dict[str, Any]:
+        f = {"metadata.owner_id": config.owner_id}
         if not filters:
-            return {}
-        f = {}
+            return f
         if filters.category:
             f["metadata.category"] = filters.category
         if filters.min_year or filters.max_year:
@@ -919,12 +998,23 @@ class StorageService:
             f["metadata.year"] = year_query
         if filters.doc_ids:
             f["doc_id"] = {"$in": filters.doc_ids}
+        if filters.content_type:
+            f["metadata.content_type"] = filters.content_type
+        if filters.upload_after or filters.upload_before:
+            uploaded = {}
+            if filters.upload_after:
+                uploaded["$gte"] = filters.upload_after
+            if filters.upload_before:
+                uploaded["$lte"] = filters.upload_before
+            f["metadata.uploaded_at"] = uploaded
         return f
 
     def _matches_filter(self, chunk: DocumentChunk, filters: Optional[SearchFilters]) -> bool:
+        meta = chunk.metadata or {}
+        if meta.get("owner_id") != config.owner_id:
+            return False
         if not filters:
             return True
-        meta = chunk.metadata or {}
         if filters.category and meta.get("category") != filters.category:
             return False
         if filters.min_year and (meta.get("year") or 0) < filters.min_year:
@@ -932,6 +1022,13 @@ class StorageService:
         if filters.max_year and (meta.get("year") or 9999) > filters.max_year:
             return False
         if filters.doc_ids and chunk.doc_id not in filters.doc_ids:
+            return False
+        if filters.content_type and meta.get("content_type") != filters.content_type:
+            return False
+        uploaded = meta.get("uploaded_at", 0)
+        if filters.upload_after and uploaded < filters.upload_after:
+            return False
+        if filters.upload_before and uploaded > filters.upload_before:
             return False
         return True
 
@@ -943,6 +1040,9 @@ class StorageService:
         expected_model = embedding_service.current_model_name
 
         if self.is_connected and self.collection is not None:
+            readiness = self.atlas_index_readiness()
+            if not readiness["ready"]:
+                raise RuntimeError(f"Atlas search indexes are not ready: {readiness}")
             mongo_filter = self._build_mongo_filter(filters)
             models = self.collection.distinct("embedding_model", mongo_filter)
             dimensions = self.collection.distinct("embedding_dim", mongo_filter)

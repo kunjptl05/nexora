@@ -42,20 +42,24 @@ async function fetchStatus() {
     const scopeDocBadge = document.getElementById('scopeDocBadge');
     const kbHeadline = document.getElementById('kbHeadlineText');
 
-    if (data.mongodb_connected) {
+    if (data.mongodb_connected && data.atlas_indexes?.ready) {
       if (sidebarStatus) {
-        sidebarStatus.textContent = "MongoDB Atlas Vector Search: connected";
+        sidebarStatus.textContent = "Study library connected";
         sidebarStatus.className = "font-bold text-[10.5px] text-emerald-300";
       }
       if (sidebarDot) sidebarDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
-      if (kbHeadline) kbHeadline.textContent = "MongoDB Atlas Vector Search: connected (Active Cluster)";
+      if (kbHeadline) kbHeadline.textContent = "Your study library is connected and ready.";
+    } else if (data.mongodb_connected) {
+      if (sidebarStatus) sidebarStatus.textContent = "Study library is getting ready";
+      if (sidebarDot) sidebarDot.className = "w-2 h-2 rounded-full bg-amber-400";
+      if (kbHeadline) kbHeadline.textContent = "The connected study library is waiting for its search indexes; local search remains available.";
     } else {
       if (sidebarStatus) {
-        sidebarStatus.textContent = "Local Vector Fallback Active";
+        sidebarStatus.textContent = "Study library active";
         sidebarStatus.className = "font-bold text-[10.5px] text-emerald-200";
       }
       if (sidebarDot) sidebarDot.className = "w-2 h-2 rounded-full bg-amber-400";
-      if (kbHeadline) kbHeadline.textContent = "Local Vector + BM25 (Persistent Local Store)";
+      if (kbHeadline) kbHeadline.textContent = "Your study library is using local search.";
     }
 
     if (sidebarStats) {
@@ -72,34 +76,29 @@ async function fetchStatus() {
 
 function switchTab(tabId) {
   appState.activeTab = tabId;
-  const tabs = ['chat', 'docs', 'conflict', 'eval', 'arch'];
+  const tabs = ['chat', 'docs', 'conflict', 'eval'];
   
   const titles = {
     chat: {
-      title: "Workspace · Cross-Document Intelligence",
+      title: "Study Chat · Learn from your materials",
       icon: "message-square",
-      subtext: "3-Panel Synthesis, Traceability & Conflict Radar"
+      subtext: "Ask questions, get simple explanations, and find gaps to revise"
     },
     docs: {
-      title: "Knowledge Base · Document Repository",
+      title: "My Study Materials · Document Library",
       icon: "folder-kanban",
-      subtext: "Indexed Sources, Chunk Boundaries & Vector Embeddings"
+      subtext: "Your uploaded notes, readings, and learning resources"
     },
     conflict: {
-      title: "Conflict Radar · Claim Reconciliation",
+      title: "Compare Sources · Spot Differences",
       icon: "git-compare",
       subtext: "Potential differences across retrieved sources"
     },
     eval: {
-      title: "Benchmark & Ablation Suite · Retrieval Comparison",
+      title: "Study Quality · Learning Checks",
       icon: "bar-chart-2",
-      subtext: "Dense Only vs. Lexical Only vs. Hybrid RRF Ablation"
+      subtext: "Check coverage across your study materials"
     },
-    arch: {
-      title: "Atlas & Specs · Architecture",
-      icon: "sliders",
-      subtext: "MongoDB Atlas Vector Index Spec & Model Credentials"
-    }
   };
 
   const viewTitle = document.getElementById('currentViewTitle');
@@ -395,7 +394,7 @@ async function handleQuerySubmit(e) {
         use_hybrid: useHybrid,
         top_k: topK,
         answer_mode: answerMode,
-        filters: docIdsFilter ? { doc_ids: docIdsFilter } : null
+        filters: { ...(docIdsFilter ? { doc_ids: docIdsFilter } : {}), ...(document.getElementById('contentTypeFilter')?.value ? { content_type: document.getElementById('contentTypeFilter').value } : {}), ...(document.getElementById('uploadedAfterFilter')?.value ? { upload_after: Date.parse(document.getElementById('uploadedAfterFilter').value) / 1000 } : {}), ...(document.getElementById('uploadedBeforeFilter')?.value ? { upload_before: (Date.parse(document.getElementById('uploadedBeforeFilter').value) + 86400000) / 1000 } : {}) }
       })
     });
     const data = await res.json();
@@ -417,6 +416,57 @@ async function handleQuerySubmit(e) {
     sendBtn.disabled = false;
     lucide.createIcons();
   }
+}
+
+async function createStudyKit(kind) {
+  const topic = document.getElementById('queryInput')?.value.trim() || '';
+  const selected = Array.from(appState.selectedScopeDocIds);
+  const filters = {};
+  if (selected.length && selected.length < appState.documents.length) filters.doc_ids = selected;
+  const contentType = document.getElementById('contentTypeFilter')?.value;
+  const after = document.getElementById('uploadedAfterFilter')?.value;
+  const before = document.getElementById('uploadedBeforeFilter')?.value;
+  if (contentType) filters.content_type = contentType;
+  if (after) filters.upload_after = Date.parse(after) / 1000;
+  if (before) filters.upload_before = (Date.parse(before) + 86400000) / 1000;
+  const stream = document.getElementById('chatStream');
+  try {
+    const response = await fetch('/api/study/kit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, topic, filters, count: 5 })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || 'Could not create study prompts.');
+    const title = { quiz: 'Quick quiz', flashcards: 'Flashcards', revision: 'Revision plan' }[kind];
+    const cards = (result.cards || []).map((card, index) => {
+      const citation = card.citation;
+      appState.currentCitations[citation.id] = citation;
+      return `<article class="p-3 rounded-xl border border-emerald-100 bg-white"><div class="font-bold text-stone-800">${escapeHtml(card.front)}</div><button class="mt-2 text-emerald-800 font-bold text-[11px]" onclick="this.nextElementSibling.classList.toggle('hidden')">Show answer</button><p class="hidden mt-2 text-stone-700">${escapeHtml(card.back)}</p><button class="mt-2 block text-[10px] underline text-emerald-800" onclick="openPassageModal('${escapeHtml(citation.id)}')">Source: ${escapeHtml(citation.doc_title)} · p.${citation.page_number || 1}</button><button class="mt-2 text-[10px] font-bold text-amber-800" onclick="markKnowledgeGap('${escapeHtml(citation.id)}')">Mark for revision</button></article>`;
+    }).join('');
+    stream.insertAdjacentHTML('beforeend', `<section class="max-w-3xl mx-auto rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3"><h3 class="font-extrabold text-emerald-950">${title}${topic ? ` · ${escapeHtml(topic)}` : ''}</h3><p class="text-xs text-stone-600">${escapeHtml(result.message || '')}</p>${cards || '<p class="text-sm">Add study material for this topic to get started.</p>'}</section>`);
+    if (kind === 'revision') renderKnowledgeGaps(stream);
+    stream.scrollTop = stream.scrollHeight;
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function markKnowledgeGap(citationId) {
+  const citation = appState.currentCitations[citationId];
+  if (!citation) return;
+  const gaps = JSON.parse(localStorage.getItem('nexoraStudyGaps') || '[]');
+  const item = { doc_id: citation.doc_id, doc_title: citation.doc_title, section: citation.section || 'Key idea', page_number: citation.page_number || 1 };
+  if (!gaps.some(gap => gap.doc_id === item.doc_id && gap.section === item.section)) gaps.push(item);
+  localStorage.setItem('nexoraStudyGaps', JSON.stringify(gaps));
+  renderKnowledgeGaps(document.getElementById('chatStream'));
+}
+
+function renderKnowledgeGaps(stream) {
+  const gaps = JSON.parse(localStorage.getItem('nexoraStudyGaps') || '[]');
+  const existing = document.getElementById('knowledgeGapPanel');
+  if (existing) existing.remove();
+  if (!gaps.length) return;
+  stream.insertAdjacentHTML('beforeend', `<aside id="knowledgeGapPanel" class="max-w-3xl mx-auto p-3 rounded-xl bg-amber-50 border border-amber-200"><h4 class="font-bold text-amber-950">Topics to revisit (${gaps.length})</h4><ul class="mt-1 text-xs text-amber-900">${gaps.map(gap => `<li>${escapeHtml(gap.doc_title)} · ${escapeHtml(gap.section)} · p.${gap.page_number}</li>`).join('')}</ul><button class="mt-2 text-[10px] underline" onclick="localStorage.removeItem('nexoraStudyGaps'); renderKnowledgeGaps(document.getElementById('chatStream'))">Clear review list</button></aside>`);
 }
 
 function appendUserMessage(text) {
@@ -448,7 +498,7 @@ function appendLoadingIndicator() {
     </div>
     <div class="forest-surface p-4 rounded-2xl text-xs text-stone-600 flex items-center gap-3 shadow-2xs">
       <span class="w-2.5 h-2.5 rounded-full bg-[#E07A5F] animate-ping"></span>
-      <span class="font-medium">Synthesizing evidence, calculating conflict deltas, compiling retrieval trace...</span>
+      <span class="font-medium">Looking through your study materials...</span>
     </div>
   `;
   stream.appendChild(div);
@@ -566,15 +616,11 @@ function appendAssistantResponse(data) {
     <div class="flex-1 forest-surface rounded-2xl p-5 shadow-xs text-xs">
       <div class="flex items-center justify-between mb-3 border-b border-stone-100 pb-2.5">
         <div class="flex items-center gap-2">
-          <span class="font-extrabold text-[#0F3E33] text-sm">Nexora Synthesis</span>
+          <span class="font-extrabold text-[#0F3E33] text-sm">NEXORA Study Buddy</span>
           <span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-semibold">${data.answer_mode === 'exact' ? 'Exact source text' : 'Grounded answer'}</span>
           ${groundedBadge}
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="openExplainTraceModal()" title="Inspect complete retrieval trace & Atlas $vectorSearch pipeline" 
-                  class="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-emerald-800 transition-colors">
-            <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
-          </button>
           <button onclick="exportCurrentReport()" title="Export server-verified report" 
                   class="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-emerald-800 transition-colors">
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
@@ -698,86 +744,6 @@ function highlightCitationInPanel(citationId) {
   openPassageModal(citationId);
 }
 
-// ----------------- EXPLAIN VECTOR SEARCH TRACE MODAL -----------------
-
-function openExplainTraceModal() {
-  const plan = appState.latestExplainPlan;
-  const modal = document.getElementById('explainTraceModal');
-  const container = document.getElementById('explainTraceContent');
-  if (!modal || !container) return;
-
-  if (!plan) {
-    container.innerHTML = `
-      <div class="text-center py-12">
-        <p class="text-xs text-stone-500 mb-2">No active search trace recorded yet.</p>
-        <p class="text-[11px] text-stone-400">Run a query in the Workspace to inspect the real-time Atlas $vectorSearch pipeline and RRF candidate ranking.</p>
-      </div>
-    `;
-    modal.showModal();
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="space-y-4">
-      <!-- Trace Header -->
-      <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between">
-        <div>
-          <span class="text-[10px] font-bold uppercase text-emerald-900 tracking-wider">Storage Engine Headline</span>
-          <h4 class="font-bold text-emerald-950 text-xs">${escapeHtml(plan.headline || plan.mode)}</h4>
-        </div>
-        <div class="text-right text-[11px] font-mono font-bold text-emerald-800">
-          <div>Embedding: ${plan.latency_breakdown?.embedding_time_ms || 0} ms</div>
-          <div>Search: ${plan.latency_breakdown?.retrieval_time_ms || 0} ms</div>
-        </div>
-      </div>
-
-      <!-- MongoDB Atlas $vectorSearch Pipeline Stage -->
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="font-bold text-stone-900 text-xs flex items-center gap-1.5">
-            <i data-lucide="database" class="w-3.5 h-3.5 text-emerald-700"></i>
-            <span>MongoDB Atlas $vectorSearch Aggregation Stage</span>
-          </span>
-          <span class="text-[10px] font-mono text-stone-400">Index: ${escapeHtml(appState.status?.vector_index_name || 'vector_index')}</span>
-        </div>
-        <pre class="p-3.5 rounded-xl bg-[#0F3E33] text-emerald-200 text-[11px] font-mono overflow-x-auto border border-emerald-900 leading-relaxed">${escapeHtml(JSON.stringify(plan.aggregation_pipeline, null, 2))}</pre>
-      </div>
-
-      <!-- Candidates Pre-RRF vs Post-RRF -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <!-- Pre-RRF Candidates -->
-        <div class="p-3.5 rounded-xl bg-[#F7F9F8] border border-stone-200">
-          <span class="font-bold text-stone-900 text-xs block mb-2">1. Candidates Before RRF</span>
-          <div class="space-y-1.5 font-mono text-[10px]">
-            ${(plan.candidates_pre_rrf || []).map(c => `
-              <div class="p-2 rounded bg-white border border-stone-200">
-                <div class="font-bold text-stone-800 truncate">${c.rank}. ${escapeHtml(c.dense_candidate?.title || 'Unknown')}</div>
-                <div class="text-stone-500">Vector Sim: <strong class="text-emerald-700">${c.dense_candidate?.score}</strong> | BM25: <strong class="text-stone-700">${c.lexical_candidate?.score}</strong></div>
-              </div>
-            `).join('') || '<div class="text-stone-400 text-center py-2">No pre-RRF candidates</div>'}
-          </div>
-        </div>
-
-        <!-- Post-RRF Candidates -->
-        <div class="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200">
-          <span class="font-bold text-emerald-950 text-xs block mb-2">2. Fused Ranking After RRF</span>
-          <div class="space-y-1.5 font-mono text-[10px]">
-            ${(plan.candidates_post_rrf || []).map(c => `
-              <div class="p-2 rounded bg-white border border-emerald-200">
-                <div class="font-bold text-emerald-950 truncate">${c.rank}. ${escapeHtml(c.doc_title)}</div>
-                <div class="text-emerald-800">RRF Score: <strong class="text-emerald-900">${c.rrf_score}</strong> | Vector: ${c.vector_sim} | Lex: ${c.lexical_score}</div>
-              </div>
-            `).join('') || '<div class="text-stone-400 text-center py-2">No post-RRF candidates</div>'}
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  modal.showModal();
-  lucide.createIcons();
-}
-
 // ----------------- PASSAGE INSPECTOR MODAL -----------------
 
 function openPassageModal(citationId) {
@@ -789,6 +755,12 @@ function openPassageModal(citationId) {
   document.getElementById('modalContent').textContent = cit.snippet;
   document.getElementById('modalDocId').textContent = `Doc ID: ${cit.doc_id}`;
   document.getElementById('modalChunkId').textContent = `Chunk ID: ${cit.id}`;
+  const sourceLink = document.getElementById('modalSourceLink');
+  if (sourceLink) {
+    const sourceUrl = cit.metadata?.content_type === 'text/html' && /^https?:\/\//i.test(cit.metadata?.source_url || '') ? cit.metadata.source_url : `/api/documents/${encodeURIComponent(cit.doc_id)}/source?page=${encodeURIComponent(cit.page_number || 1)}${cit.metadata?.content_type === 'application/pdf' ? `#page=${cit.page_number || 1}` : ''}`;
+    sourceLink.href = sourceUrl;
+    sourceLink.classList.remove('hidden');
+  }
 
   const badges = document.getElementById('modalBadges');
   badges.innerHTML = `
@@ -1099,6 +1071,8 @@ async function handleUploadSubmit(e) {
   if (yearInput) formData.append('year', yearInput);
   if (file) formData.append('file', file);
   if (textContent) formData.append('text_content', textContent);
+  const webpageUrl = document.getElementById('upUrl')?.value.trim();
+  if (webpageUrl) formData.append('url', webpageUrl);
 
   const btn = document.getElementById('btnUploadSubmit');
   btn.disabled = true;
