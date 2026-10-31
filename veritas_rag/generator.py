@@ -1,6 +1,6 @@
 import re
 import time
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from veritas_rag.models import Citation, ConflictItem, QueryResponse
 from veritas_rag.config import config
 from veritas_rag.conflict_radar import conflict_radar
