@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import base64
 import requests
 
@@ -66,33 +67,42 @@ def deploy_to_github(token: str, repo_name: str = "nexora", is_private: bool = F
     files.sort(key=lambda x: 0 if x[0] == "README.md" else 1)
     print(f"Uploading {len(files)} files to repository...")
 
-    # 4. Upload each file using the GitHub Contents API
+    # 4. Upload each file using the GitHub Contents API with retry handling
     success_count = 0
     for rel_path, full_path in files:
         url = f"{GITHUB_API}/repos/{username}/{repo_name}/contents/{rel_path}"
         with open(full_path, "rb") as f:
             b64_content = base64.b64encode(f.read()).decode("utf-8")
         
-        # Check if file already exists to get its sha
-        sha = None
-        get_res = requests.get(url, headers=headers)
-        if get_res.status_code == 200:
-            sha = get_res.json().get("sha")
+        for attempt in range(4):
+            try:
+                # Check if file already exists to get its sha
+                sha = None
+                get_res = requests.get(url, headers=headers, timeout=15)
+                if get_res.status_code == 200:
+                    sha = get_res.json().get("sha")
 
-        payload = {
-            "message": f"Add {rel_path}",
-            "content": b64_content,
-            "branch": "main"
-        }
-        if sha:
-            payload["sha"] = sha
+                payload = {
+                    "message": f"Update {rel_path}",
+                    "content": b64_content,
+                    "branch": "main"
+                }
+                if sha:
+                    payload["sha"] = sha
 
-        put_res = requests.put(url, headers=headers, json=payload)
-        if put_res.status_code in (200, 201):
-            print(f"  [+] {rel_path}")
-            success_count += 1
-        else:
-            print(f"  [-] Failed {rel_path} ({put_res.status_code}): {put_res.text}")
+                put_res = requests.put(url, headers=headers, json=payload, timeout=20)
+                if put_res.status_code in (200, 201):
+                    print(f"  [+] {rel_path}")
+                    success_count += 1
+                    break
+                else:
+                    print(f"  [-] Failed {rel_path} ({put_res.status_code}): {put_res.text}")
+                    break
+            except Exception as err:
+                if attempt < 3:
+                    time.sleep(2)
+                    continue
+                print(f"  [-] Connection error on {rel_path}: {err}")
 
     repo_url = f"https://github.com/{username}/{repo_name}"
     print(f"\nSuccessfully uploaded {success_count}/{len(files)} files!")
