@@ -194,7 +194,7 @@ class GroundedGenerator:
             citation = citations[citation_number - 1]
             source_label = f"{citation.doc_title}, {citation.section or 'Main'}, p.{citation.page_number}"
             lines.append(f"> {sentence} [{citation_number}]")
-            lines.append(f"> <small>{source_label}</small>")
+            lines.append(f"> Source: {source_label}")
         return "\n".join(lines)
 
     def _extract_battery_chemistries(
@@ -315,7 +315,7 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
             citation = citations[citation_number - 1]
             source_label = f"{citation.doc_title} · {citation.section or 'Main'} · Page {citation.page_number}"
             lines.append(f"> {sentence} [{citation_number}]")
-            lines.append(f"> <small>{source_label}</small>")
+            lines.append(f"> Source: {source_label}")
         return "\n".join(lines)
 
     def _local_grounded_synthesis(
