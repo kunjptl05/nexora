@@ -72,7 +72,7 @@ class EmbeddingService:
 
         self.vector_dim = 128
         self.current_model_name = "local-hash-projection"
-        return [self._local_semantic_embedding(t) for t in texts)
+        return [self._local_semantic_embedding(t) for t in texts]
 
     def _normalize(self, vec: List[float]) -> List[float]:
         norm = math.sqrt(sum(x * x for x in vec))
