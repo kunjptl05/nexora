@@ -19,6 +19,18 @@ class ConflictRadar:
             return "software_auth"
         return "general"
 
+    def _normalize_unit(self, currency: str, unit: str) -> str:
+        raw = (currency or unit or "").strip().lower()
+        aliases = {
+            "%": "percent", "percent": "percent", "percentage": "percent",
+            "year": "years", "years": "years", "yr": "years", "yrs": "years",
+            "month": "months", "months": "months", "day": "days", "days": "days",
+            "second": "seconds", "seconds": "seconds", "sec": "seconds", "s": "seconds",
+            "usd": "usd", "$": "usd", "inr": "inr", "₹": "inr", "eur": "eur", "€": "eur",
+            "ms": "ms", "kw": "kw", "kwh": "kwh", "gb": "gb", "mb": "mb"
+        }
+        return aliases.get(raw, raw)
+
     def detect_conflicts(self, citations: List[Citation], query: str) -> List[ConflictItem]:
         if len(citations) < 2:
             return []
@@ -85,11 +97,12 @@ class ConflictRadar:
                         "display_val": display_val,
                         "numeric_val": numeric_val,
                         "unit": unit_clean,
+                        "normalized_unit": self._normalize_unit(currency, unit),
                         "doc_title": cit.doc_title,
                         "doc_id": cit.doc_id,
                         "section": cit.section or "Section",
                         "page": cit.page_number,
-                        "year": cit.metadata.get("year", 2025)
+                        "year": cit.metadata.get("year")
                     })
 
         # Compare pairs across different documents within the same semantic domain
@@ -97,7 +110,11 @@ class ConflictRadar:
             for j in range(i + 1, len(extracted)):
                 e1 = extracted[i]
                 e2 = extracted[j]
-                if e1["doc_id"] != e2["doc_id"] and e1["metric"] == e2["metric"] and e1["domain"] == e2["domain"]:
+                units_match = e1["normalized_unit"] == e2["normalized_unit"]
+                if (e1["doc_id"] != e2["doc_id"]
+                        and e1["metric"] == e2["metric"]
+                        and e1["domain"] == e2["domain"]
+                        and units_match):
                     if e1["display_val"] != e2["display_val"]:
                         # Calculate quantitative delta if both numeric
                         delta_str = None
@@ -146,7 +163,7 @@ class ConflictRadar:
 
     def _check_policy_revisions(self, citations: List[Citation]) -> List[ConflictItem]:
         findings = []
-        keywords = ["eligible", "approved", "supersedes", "revoked", "replaced", "updated", "deprecated"]
+        keywords = ["supersedes", "superseded", "replaces", "replaced", "revokes", "revoked", "repeals", "repealed", "amends", "amended"]
         
         doc_years = {}
         for c in citations:
@@ -163,7 +180,7 @@ class ConflictRadar:
             older_year, older_cit = sorted_docs[0]
             newer_year, newer_cit = sorted_docs[-1]
             if newer_year > older_year:
-                has_policy_change = any(k in older_cit.snippet.lower() or k in newer_cit.snippet.lower() for k in keywords)
+                has_policy_change = any(re.search(rf"\\b{k}\\b", older_cit.snippet + " " + newer_cit.snippet, re.IGNORECASE) for k in keywords)
                 if has_policy_change:
                     findings.append(ConflictItem(
                         id=f"cnf_{uuid.uuid4().hex[:6]}",
