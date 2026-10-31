@@ -343,15 +343,15 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
         if self._is_component_question(question):
             chemistries = self._extract_battery_chemistries(selected)
             physical_part_patterns = [
-                ("anode", re.compile(r"\banode\\b", re.IGNORECASE)),
-                ("cathode", re.compile(r"\bcathode\\b", re.IGNORECASE)),
-                ("electrolyte", re.compile(r"\belectrolyte\\b", re.IGNORECASE)),
-                ("separator", re.compile(r"\bseparator\\b", re.IGNORECASE)),
-                ("electrodes", re.compile(r"\belectrodes?\\b", re.IGNORECASE)),
-                ("current collector", re.compile(r"\bcurrent collectors?\\b", re.IGNORECASE)),
-                ("battery management system (BMS)", re.compile(r"\b(?:battery management system|BMS)\\b", re.IGNORECASE)),
-                ("thermal management", re.compile(r"\bthermal management\\b", re.IGNORECASE)),
-                ("casing/enclosure", re.compile(r"\b(?:casing|enclosure)\\b", re.IGNORECASE))
+                ("anode", re.compile(r"\banode\b", re.IGNORECASE)),
+                ("cathode", re.compile(r"\bcathode\b", re.IGNORECASE)),
+                ("electrolyte", re.compile(r"\belectrolyte\b", re.IGNORECASE)),
+                ("separator", re.compile(r"\bseparator\b", re.IGNORECASE)),
+                ("electrodes", re.compile(r"\belectrodes?\b", re.IGNORECASE)),
+                ("current collector", re.compile(r"\bcurrent collectors?\b", re.IGNORECASE)),
+                ("battery management system (BMS)", re.compile(r"\b(?:battery management system|BMS)\b", re.IGNORECASE)),
+                ("thermal management", re.compile(r"\bthermal management\b", re.IGNORECASE)),
+                ("casing/enclosure", re.compile(r"\b(?:casing|enclosure)\b", re.IGNORECASE))
             ]
             physical_parts = []
             for citation_number, sentence in selected:
