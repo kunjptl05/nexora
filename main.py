@@ -310,7 +310,8 @@ def query_rag(req: QueryRequest):
     response = generator.generate_response(
         question=req.question,
         citations=citations,
-        explain_search=explain_search
+        explain_search=explain_search,
+        answer_mode=req.answer_mode
     )
     # Store in server-side query history for authentic report generation
     storage_service.store_query_result(response.query_id, response)
