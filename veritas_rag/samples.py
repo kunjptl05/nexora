@@ -3,6 +3,7 @@ from veritas_rag.models import DocumentUploadRequest
 from veritas_rag.chunker import chunker
 from veritas_rag.storage import storage_service
 import uuid
+import hashlib
 
 SAMPLE_DATASETS: List[Dict[str, Any]] = [
     {
@@ -109,18 +110,24 @@ During a network partition between AZ-1 and AZ-2, the session revocation blackli
     }
 ]
 
-def load_sample_datasets():
-    """Initializes knowledge base with rich multi-document datasets."""
+def load_sample_datasets(force_reload: bool = False):
+    """Initializes knowledge base with rich multi-document datasets idempotently."""
+    loaded_count = 0
     for item in SAMPLE_DATASETS:
+        if not force_reload and item["id"] in storage_service._documents:
+            continue
         meta = {
             "title": item["title"],
             "author": item["author"],
             "year": item["year"],
             "category": item["category"],
             "source_type": "preloaded",
-            "file_size_bytes": len(item["content"].encode("utf-8"))
+            "file_size_bytes": len(item["content"].encode("utf-8")),
+            "content_hash": hashlib.sha256(item["content"].encode("utf-8")).hexdigest()[:16]
         }
         storage_service.add_document(item["id"], item["title"], meta, item["content"])
         chunks = chunker.chunk_document(item["id"], item["title"], item["content"], meta)
         storage_service.add_chunks(chunks)
-    print(f"[Samples] Successfully loaded {len(SAMPLE_DATASETS)} pre-loaded benchmark documents.")
+        loaded_count += 1
+    if loaded_count > 0:
+        print(f"[Samples] Successfully loaded {loaded_count} benchmark documents.")
