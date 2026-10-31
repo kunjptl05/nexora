@@ -5,7 +5,7 @@ FIELD_ALIASES: Dict[str, List[str]] = {
     "candidate_name": ["candidate name", "applicant name", "student name", "full name", "name"],
     "father_name": ["father's name", "father name", "parent name"],
     "application_id": ["application id", "application number", "application no"],
-    "record_id": ["candidate id", "student id", "id"],
+    "record_id": ["candidate id", "record id", "id"],
     "date_of_birth": ["date of birth", "birth date", "dob"],
     "aadhaar_number": ["aadhaar card number", "aadhar card number", "aadhaar number", "aadhar number"],
     "email": ["email address", "e-mail", "email"],
