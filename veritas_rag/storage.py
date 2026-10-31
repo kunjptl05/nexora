@@ -16,7 +16,7 @@ class StorageService:
         self.db = None
         self.collection = None
         self.is_connected = False
-        self.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+        self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
         self._data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_store.json")
         
         # In-memory storage for zero-config fallback & benchmarking
@@ -72,7 +72,7 @@ class StorageService:
         """Attempts connection to MongoDB Atlas Vector Search."""
         if not uri:
             self.is_connected = False
-            self.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+            self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
             return False, "No MongoDB URI provided. Running on Local Fallback Engine."
 
         try:
@@ -102,7 +102,7 @@ class StorageService:
             return True, "Successfully connected to MongoDB Atlas Vector Search!"
         except Exception as e:
             self.is_connected = False
-            self.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+            self.active_mode = "Local Vector + BM25 (Persistent Local Store)"
             return False, f"Could not connect to MongoDB Atlas ({str(e)}). Active in Local In-Memory Fallback Mode."
 
     def count_chunks(self) -> int:
@@ -294,7 +294,7 @@ class StorageService:
         ]
 
         explain_plan = {
-            "headline": "MongoDB Atlas Vector Search: connected" if self.is_connected else "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)",
+            "headline": "MongoDB Atlas Vector Search: connected" if self.is_connected else "Local Vector + BM25 (Persistent Local Store)",
             "mode": self.active_mode,
             "search_mode": search_mode,
             "query": query,
@@ -329,7 +329,7 @@ class StorageService:
                 explain_plan["atlas_error"] = str(e)
                 print(f"[StorageService] Atlas search error, using local fallback: {e}")
 
-        # 2. Local In-Memory Hybrid Search
+        # 2. Local Hybrid Search
         citations, trace_details = self._search_local_hybrid_traced(
             query, query_embedding, filters, top_k, use_hybrid, search_mode
         )
