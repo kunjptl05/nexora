@@ -90,9 +90,9 @@ function switchTab(tabId) {
       subtext: "Your uploaded notes, readings, and learning resources"
     },
     conflict: {
-      title: "Compare Sources · Spot Differences",
+      title: "Compare Algorithms · Study Guide",
       icon: "git-compare",
-      subtext: "Potential differences across retrieved sources"
+      subtext: "Review how algorithms differ using your study materials"
     },
     eval: {
       title: "Study Quality · Learning Checks",
@@ -616,7 +616,7 @@ function appendAssistantResponse(data) {
     <div class="flex-1 forest-surface rounded-2xl p-5 shadow-xs text-xs">
       <div class="flex items-center justify-between mb-3 border-b border-stone-100 pb-2.5">
         <div class="flex items-center gap-2">
-          <span class="font-extrabold text-[#0F3E33] text-sm">NEXORA Study Buddy</span>
+          <span class="font-extrabold text-[#0F3E33] text-sm">NEXORA</span>
           <span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-semibold">${data.answer_mode === 'exact' ? 'Exact source text' : 'Grounded answer'}</span>
           ${groundedBadge}
         </div>
@@ -786,46 +786,46 @@ function openPassageModal(citationId) {
 function initDefaultConflictDashboard() {
   const defaultShowcaseConflicts = [
     {
-      subject: "Minimum Solar Panel Efficiency Mandate",
-      claim_a: "Section 4.1: all approved monocrystalline photovoltaic modules must achieve a minimum tested solar panel efficiency of 18.0%.",
-      source_a: "Solar Policy Framework 2023 (p.1)",
-      value_a: "18.0%",
-      claim_b: "Section 3.2: raises the minimum required solar panel efficiency standard to 22.0%. Panels falling below this revised threshold are prohibited.",
-      source_b: "CleanTech Modernization Act 2025 (p.1)",
-      value_b: "22.0%",
-      delta: "+4.0% Net Increase",
-      unit: "%",
-      discrepancy_type: "quantitative",
-      severity: "high",
-      explanation: "Statutory efficiency standard was amended upward from 18.0% in 2023 to 22.0% in the 2025 Modernization Act to promote tandem cells."
+      subject: "Hash map lookup: average and worst case",
+      claim_a: "With a well-distributed hash function, lookup is O(1) on average.",
+      source_a: "DSA Notes: Arrays, Strings, and Hash Maps",
+      value_a: "O(1) average",
+      claim_b: "With many collisions, worst-case lookup can be O(n).",
+      source_b: "DSA Practice Notes: Complexity Claims to Check",
+      value_b: "O(n) worst case",
+      delta: "Different input and collision assumptions",
+      unit: "complexity",
+      discrepancy_type: "complexity_context",
+      severity: "notice",
+      explanation: "Both statements can be correct: average-case lookup assumes a suitable hash distribution, while worst-case lookup accounts for collisions."
     },
     {
-      subject: "Mandatory Manufacturer Warranty Period",
-      claim_a: "Section 5: Installers must offer a minimum mandatory manufacturer warranty of 3 years covering inverters, racking systems, and panel output.",
-      source_a: "Solar Policy Framework 2023 (p.1)",
-      value_a: "3 years",
-      claim_b: "Section 4: Recognising advancements, the mandatory equipment warranty period is extended to 5 years (superseding the former 3-year term).",
-      source_b: "CleanTech Modernization Act 2025 (p.1)",
-      value_b: "5 years",
-      delta: "+2 Years Warranty",
-      unit: "years",
-      discrepancy_type: "policy_revision",
-      severity: "high",
-      explanation: "Manufacturer warranty obligations were extended from 3 years (2023 baseline) to 5 years (2025 Modernization Act), expanding to BMS controllers."
+      subject: "Binary search and sorted input",
+      claim_a: "Binary search discards half of the range per comparison and takes O(log n).",
+      source_a: "DSA Notes: Complexity and Searching",
+      value_a: "O(log n)",
+      claim_b: "Linear search works on unsorted data and takes O(n) in the worst case.",
+      source_b: "DSA Notes: Complexity and Searching",
+      value_b: "O(n)",
+      delta: "Choose based on ordering and access",
+      unit: "time complexity",
+      discrepancy_type: "algorithm_comparison",
+      severity: "notice",
+      explanation: "Binary search is faster when data is sorted and supports efficient middle access. Linear search works without sorting."
     },
     {
-      subject: "Direct Residential Clean Energy Rebate Cap",
-      claim_a: "Section 6.2: Qualifying households are eligible for a direct government subsidy rebate of $5,000 for installations exceeding 4.5 kW capacity.",
-      source_a: "Solar Policy Framework 2023 (p.1)",
-      value_a: "$5,000",
-      claim_b: "Section 5: Direct residential subsidy rebate is now capped at $3,500 per installation (revised downward from $5,000 with automatic portal approval).",
-      source_b: "CleanTech Modernization Act 2025 (p.1)",
-      value_b: "$3,500",
-      delta: "-$1,500 Budget Realignment",
-      unit: "$",
-      discrepancy_type: "quantitative",
-      severity: "medium",
-      explanation: "Subsidy funding per household was reduced by $1,500 in 2025 due to declining panel hardware costs, offset by instant automated portal approvals."
+      subject: "Balanced and skewed search trees",
+      claim_a: "A balanced binary search tree has height O(log n).",
+      source_a: "DSA Notes: Trees, Graphs, BFS, and DFS",
+      value_a: "O(log n) height",
+      claim_b: "A skewed binary search tree can have height O(n).",
+      source_b: "DSA Notes: Trees, Graphs, BFS, and DFS",
+      value_b: "O(n) height",
+      delta: "Performance depends on tree shape",
+      unit: "height",
+      discrepancy_type: "algorithm_comparison",
+      severity: "notice",
+      explanation: "Search, insert, and delete take O(h), so balancing keeps operations logarithmic while a skewed tree can behave like a list."
     }
   ];
 
@@ -1106,7 +1106,7 @@ async function handleUploadSubmit(e) {
 }
 
 async function resetKnowledgeBase() {
-  if (!confirm("Reset knowledge base to standard benchmark datasets? This will clear all custom uploads.")) return;
+  if (!confirm("Restore the DSA practice notes? This will clear your uploaded study materials.")) return;
   try {
     const formData = new FormData();
     formData.append('confirm', 'true');
@@ -1116,7 +1116,7 @@ async function resetKnowledgeBase() {
     await fetchStatus();
     await loadDocuments();
     initDefaultConflictDashboard();
-    alert("Knowledge base successfully restored to standard benchmark corpus.");
+    alert("DSA practice notes restored.");
   } catch (err) {
     alert(`Reset error: ${err.message}`);
   }
