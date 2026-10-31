@@ -3,6 +3,7 @@ import io
 import hashlib
 from typing import List, Tuple, Dict, Any, Optional
 from veritas_rag.models import DocumentChunk
+from veritas_rag.config import config
 
 
 class Chunker:
@@ -294,4 +295,4 @@ class Chunker:
         return [t for t, _ in self._split_large_paragraph_indexed(text, size, overlap, 0)]
 
 
-chunker = Chunker()
+chunker = Chunker(chunk_size=config.chunk_size, chunk_overlap=config.chunk_overlap)
