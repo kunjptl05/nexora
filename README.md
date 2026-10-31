@@ -11,12 +11,6 @@ NEXORA is a study assistant that helps students learn from their own files. Stud
 5. **Review the answer.** Answers include citations. Selecting a citation opens the original file or source view, while the cited passage stays available for verification.
 6. **Study across files.** The Knowledge Base shows each file’s summary and a control to open the original. Conflict checks search selected materials and show retrieved evidence that may disagree.
 7. **Keep conversations separate.** Students can start and switch between conversations. Conversation history is saved in the current browser.
-8. 
-<img width="1600" height="585" alt="image" src="https://github.com/user-attachments/assets/a5eadcd3-dd4a-4ad7-9a48-2022449d1321" />
-<img width="1600" height="584" alt="image" src="https://github.com/user-attachments/assets/66ae552a-5d04-4630-ba12-e651212c71b3" />
-<img width="1600" height="586" alt="image" src="https://github.com/user-attachments/assets/4338430b-e986-459d-ba9f-67dbdf80da88" />
-
-
 
 ## How it is made
 
