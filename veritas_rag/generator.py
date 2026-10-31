@@ -227,6 +227,13 @@ class GroundedGenerator:
         if answer_mode == "exact":
             return self._exact_extraction_answer(question, citations), "exact-extractive"
 
+        # For battery component questions, deterministic extraction prevents the model
+        # from filling a source gap with a generic textbook component list.
+        retrieved_text = " ".join(citation.snippet.lower() for citation in citations)
+        is_battery_context = any(term in retrieved_text for term in self._BATTERY_TERMS)
+        if self._is_component_question(question) and is_battery_context:
+            return self._local_grounded_synthesis(question, citations, conflicts), "local-grounded-structured"
+
         if config.gemini_api_key:
             try:
                 from google import genai
@@ -336,18 +343,38 @@ Write the answer now. Do not add a fabricated source list; Nexora will display t
         if self._is_component_question(question):
             chemistries = self._extract_battery_chemistries(selected)
             selected_text = " ".join(sentence.lower() for _, sentence in selected)
-            physical_parts_found = any(term in selected_text for term in self._BATTERY_PART_TERMS)
+            physical_part_patterns = [
+                ("anode", re.compile(r"\\banode\\b", re.IGNORECASE)),
+                ("cathode", re.compile(r"\\bcathode\\b", re.IGNORECASE)),
+                ("electrolyte", re.compile(r"\\belectrolyte\\b", re.IGNORECASE)),
+                ("separator", re.compile(r"\\bseparator\\b", re.IGNORECASE)),
+                ("electrodes", re.compile(r"\\belectrodes?\\b", re.IGNORECASE)),
+                ("current collector", re.compile(r"\\bcurrent collectors?\\b", re.IGNORECASE)),
+                ("battery management system (BMS)", re.compile(r"\\b(?:battery management system|BMS)\\b", re.IGNORECASE)),
+                ("thermal management", re.compile(r"\\bthermal management\\b", re.IGNORECASE)),
+                ("casing/enclosure", re.compile(r"\\b(?:casing|enclosure)\\b", re.IGNORECASE))
+            ]
+            physical_parts = []
+            for citation_number, sentence in selected:
+                for label, pattern in physical_part_patterns:
+                    if pattern.search(sentence) and not any(item[0] == label for item in physical_parts):
+                        physical_parts.append((label, citation_number))
 
             if chemistries:
                 lines.append("The retrieved document identifies these battery chemistries used for grid-scale storage:")
                 for label, citation_number in chemistries:
                     lines.append(f"- **{label}** [{citation_number}]")
-                if not physical_parts_found:
-                    lines.append("")
-                    lines.append(
-                        "These are battery chemistries, not a breakdown of the physical cell components. "
-                        "The retrieved passage does not specify the anode, cathode, electrolyte, or separator."
-                    )
+            if physical_parts:
+                lines.append("")
+                lines.append("Physical battery components explicitly named in the retrieved passages:")
+                for label, citation_number in physical_parts:
+                    lines.append(f"- **{label}** [{citation_number}]")
+            elif chemistries:
+                lines.append("")
+                lines.append(
+                    "The passage identifies battery chemistries, not the physical parts inside a cell. "
+                    "It does not provide a physical component breakdown, so Nexora has not added a generic list."
+                )
             else:
                 lines.append("The retrieved passages mention battery-related information, but they do not provide a clear list of battery components or chemistries.")
                 lines.append("I have not added a generic component list because it is not stated in the retrieved evidence.")
