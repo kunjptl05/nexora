@@ -372,6 +372,7 @@ async function handleQuerySubmit(e) {
 
   const useHybrid = document.getElementById('useHybridToggle').checked;
   const topK = parseInt(document.getElementById('topKSelect').value);
+  const answerMode = document.getElementById('answerModeSelect')?.value || 'grounded';
   const sendBtn = document.getElementById('sendBtn');
 
   let docIdsFilter = null;
@@ -393,6 +394,7 @@ async function handleQuerySubmit(e) {
         question: question,
         use_hybrid: useHybrid,
         top_k: topK,
+        answer_mode: answerMode,
         filters: docIdsFilter ? { doc_ids: docIdsFilter } : null
       })
     });
@@ -565,6 +567,7 @@ function appendAssistantResponse(data) {
       <div class="flex items-center justify-between mb-3 border-b border-stone-100 pb-2.5">
         <div class="flex items-center gap-2">
           <span class="font-extrabold text-[#0F3E33] text-sm">Nexora Synthesis</span>
+          <span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-semibold">${data.answer_mode === 'exact' ? 'Exact source text' : 'Grounded answer'}</span>
           ${groundedBadge}
         </div>
         <div class="flex items-center gap-2">
