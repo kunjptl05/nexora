@@ -14,16 +14,69 @@ class Chunker:
         doc_id: str, 
         doc_title: str, 
         content: str, 
-        metadata: Dict[str, Any] = None
+        metadata: Dict[str, Any] = None,
+        pages: List[Tuple[int, str]] = None
     ) -> List[DocumentChunk]:
         """
         Splits text by markdown sections, paragraphs, and sentence boundaries.
-        Preserves section titles and paragraph context.
+        Preserves section titles, paragraph context, and exact page numbers.
         """
         if metadata is None:
             metadata = {}
 
         chunks: List[DocumentChunk] = []
+
+        # If explicit page data from PDF is available, chunk page by page
+        if pages:
+            for page_num, page_text in pages:
+                if not page_text.strip():
+                    continue
+                page_meta = {**metadata, "page_number": page_num}
+                sections = self._split_by_sections(page_text)
+                for section_title, section_text in sections:
+                    paragraphs = [p.strip() for p in section_text.split('\n\n') if p.strip()]
+                    current_chunk = ""
+                    for para in paragraphs:
+                        if len(current_chunk) + len(para) < self.chunk_size:
+                            current_chunk += ("\n\n" + para if current_chunk else para)
+                        else:
+                            if current_chunk:
+                                chunks.append(DocumentChunk(
+                                    id=f"chk_{uuid.uuid4().hex[:8]}",
+                                    doc_id=doc_id,
+                                    doc_title=doc_title,
+                                    section=section_title,
+                                    page_number=page_num,
+                                    content=current_chunk.strip(),
+                                    metadata={**page_meta, "section": section_title, "page": page_num}
+                                ))
+                                overlap_start = max(0, len(current_chunk) - self.chunk_overlap)
+                                current_chunk = current_chunk[overlap_start:].strip() + "\n\n" + para
+                            else:
+                                sub_chunks = self._split_large_paragraph(para, self.chunk_size, self.chunk_overlap)
+                                for sc in sub_chunks:
+                                    chunks.append(DocumentChunk(
+                                        id=f"chk_{uuid.uuid4().hex[:8]}",
+                                        doc_id=doc_id,
+                                        doc_title=doc_title,
+                                        section=section_title,
+                                        page_number=page_num,
+                                        content=sc.strip(),
+                                        metadata={**page_meta, "section": section_title, "page": page_num}
+                                    ))
+                                current_chunk = ""
+                    if current_chunk.strip():
+                        chunks.append(DocumentChunk(
+                            id=f"chk_{uuid.uuid4().hex[:8]}",
+                            doc_id=doc_id,
+                            doc_title=doc_title,
+                            section=section_title,
+                            page_number=page_num,
+                            content=current_chunk.strip(),
+                            metadata={**page_meta, "section": section_title, "page": page_num}
+                        ))
+            if chunks:
+                return chunks
         
         # Detect sections if markdown headers are present
         sections = self._split_by_sections(content)
