@@ -47,10 +47,12 @@ class ConflictRadar:
 
         # Check if the query is an isolated single-version query (e.g. only mentions '2023 guidelines')
         years_in_query = re.findall(r'\b(202[0-9])\b', query)
-        is_comparative = any(w in query.lower() for w in [
-            "compare", "vs", "versus", "between", "difference", "discrepancy", 
-            "contradict", "change", "changed", "updated", "revision", "difference between", "compared to"
-        ]) or len(years_in_query) >= 2
+        is_comparative = bool(re.search(
+            r"\b(compare|compared|vs\.?|versus|between|difference|differences|discrepancy|"
+            r"contradict|conflict|change|changed|updated|revision)\b",
+            query,
+            re.IGNORECASE
+        )) or len(years_in_query) >= 2
 
         # If user explicitly asked only about a single year/standard without comparison words, don't invent conflict
         if len(years_in_query) == 1 and not is_comparative:
