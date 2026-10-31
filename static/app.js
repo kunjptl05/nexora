@@ -597,8 +597,13 @@ function appendAssistantResponse(data) {
 
 function formatAnswerText(text) {
   let formatted = escapeHtml(text);
+  formatted = formatted.replace(/^### (.*)$/gm, '<div class="font-extrabold text-[#0F3E33] mt-3 mb-1">$1</div>');
+  formatted = formatted.replace(/^\*\*(.*?)\*\*$/gm, '<div class="font-bold text-[#0F3E33] mt-2 mb-1">$1</div>');
+  formatted = formatted.replace(/^> (.*)$/gm, '<blockquote class="border-l-2 border-emerald-300 pl-3 py-0.5 text-stone-600">$1</blockquote>');
+  formatted = formatted.replace(/^- (.*)$/gm, '<div class="flex gap-2 pl-1"><span class="text-emerald-700 font-bold">•</span><span>$1</span></div>');
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong class="text-[#0F3E33] font-bold">$1</strong>');
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-900 font-mono text-[11px] font-bold border border-stone-200">$1</code>');
+  formatted = formatted.replace(/\n/g, '<br>');
   return formatted;
 }
 
