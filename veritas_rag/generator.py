@@ -1,6 +1,6 @@
 import re
 import time
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from veritas_rag.models import Citation, ConflictItem, QueryResponse
 from veritas_rag.config import config
 from veritas_rag.conflict_radar import conflict_radar
@@ -28,7 +28,8 @@ class GroundedGenerator:
         question: str,
         citations: List[Citation],
         explain_search: Dict[str, Any],
-        answer_mode: str = "grounded"
+        answer_mode: str = "grounded",
+        temperature: float = 0.2
     ) -> QueryResponse:
         start_time = time.perf_counter()
         mode = "exact" if str(answer_mode).lower() == "exact" else "grounded"
@@ -77,7 +78,7 @@ class GroundedGenerator:
 
         # 3. Generate a grounded answer or return exact extracted source sentences.
         answer, generation_mode = self._synthesize_answer(
-            question, citations, conflicts, answer_mode=mode
+            question, citations, conflicts, answer_mode=mode, temperature=temperature
         )
 
         # 4. Measure lexical support against the same retrieved source set.
@@ -98,6 +99,66 @@ class GroundedGenerator:
             generation_mode=generation_mode
         )
 
+    def generate_field_response(
+        self,
+        question: str,
+        field_matches: List[Dict[str, Any]],
+        explain_search: Optional[Dict[str, Any]] = None,
+        answer_mode: str = "grounded"
+    ) -> QueryResponse:
+        """Create a deterministic answer from exact label:value matches in uploaded documents."""
+        start_time = time.perf_counter()
+        mode = "exact" if str(answer_mode).lower() == "exact" else "grounded"
+        citations: List[Citation] = []
+        seen = set()
+        for match in field_matches:
+            citation = match.get("citation")
+            if citation and citation.id not in seen:
+                citations.append(citation)
+                seen.add(citation.id)
+
+        if mode == "exact":
+            lines = ["**Exact field value from your document**"]
+            for index, match in enumerate(field_matches, start=1):
+                citation = match["citation"]
+                lines.append(f"> {match['source_line']} [{index}]")
+                lines.append(f"> Source: {match['doc_title']}, p.{match['page_number']}")
+        else:
+            if len(field_matches) == 1:
+                match = field_matches[0]
+                label = str(match.get("label", "Field")).strip().lower()
+                if match.get("field_key") == "candidate_name":
+                    answer_line = f"The name recorded in the document is **{match['value']}** [1]."
+                else:
+                    answer_line = f"The document lists **{label}** as **{match['value']}** [1]."
+                lines = [answer_line]
+            else:
+                lines = [f"I found {len(field_matches)} matching field values in the selected documents:"]
+                for index, match in enumerate(field_matches, start=1):
+                    label = str(match.get("label", "Field")).strip()
+                    lines.append(f"- **{label}:** {match['value']} [{index}]")
+                lines.append("")
+                lines.append("Each value is taken directly from its document label.")
+
+        lines.extend(["", "**Verbatim evidence from your documents**"])
+        for index, match in enumerate(field_matches, start=1):
+            lines.append(f"> {match['source_line']} [{index}]")
+            lines.append(f"> Source: {match['doc_title']}, p.{match['page_number']}")
+
+        return QueryResponse(
+            question=question,
+            answer="\n".join(lines),
+            answer_mode=mode,
+            abstained=False,
+            abstention_reason=None,
+            citations=citations,
+            conflicts=[],
+            groundedness_score=100.0,
+            latency_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            explain_search=explain_search or {"retrieval_mode": "structured_field_lookup", "field_matches": len(field_matches)},
+            generation_mode="structured-field-extraction"
+        )
+
     def _check_abstention(
         self, question: str, citations: List[Citation]
     ) -> Tuple[bool, str, List[Citation]]:
@@ -105,29 +166,24 @@ class GroundedGenerator:
         if not citations:
             return True, "No matching document passages could be retrieved from the knowledge base.", []
 
-        q_tokens = set(re.findall(r"\b[a-z0-9]{3,}\b", question.lower())) - self._STOPWORDS
-        combined_corpus = " ".join(c.snippet.lower() for c in citations)
-        matched_tokens = sum(1 for token in q_tokens if token in combined_corpus)
-        token_coverage = matched_tokens / max(1, len(q_tokens))
-        top_score = max(c.similarity_score for c in citations)
-        top_keyword = max(c.keyword_score for c in citations)
+        query_tokens = set(re.findall(r"\b[a-z0-9]{3,}\b", question.lower())) - self._STOPWORDS
+        corpus_tokens = set()
+        for citation in citations:
+            corpus_tokens.update(re.findall(r"\b[a-z0-9]{3,}\b", citation.snippet.lower()))
+
+        matched_tokens = query_tokens.intersection(corpus_tokens)
+        token_coverage = len(matched_tokens) / max(1, len(query_tokens))
         closest = sorted(citations, key=lambda c: c.combined_score, reverse=True)[:2]
 
-        # Questions asking about a particular subject need that subject in the retrieved text.
-        subject_terms = q_tokens - {"components", "component", "parts", "part", "types", "type", "made", "materials", "material"}
-        missing_subjects = [token for token in subject_terms if token not in combined_corpus]
-        if subject_terms and len(missing_subjects) == len(subject_terms) and top_keyword < 0.2:
+        # Atlas RRF scores, vector cosine scores, and BM25 scores use different scales.
+        # Do not compare them to one shared threshold. Use backend-independent evidence overlap.
+        minimum_coverage = float(getattr(config, "abstention_threshold", 0.15))
+        if query_tokens and token_coverage < minimum_coverage:
+            missing_tokens = sorted(query_tokens - corpus_tokens)
             return (
                 True,
-                f"The retrieved passages do not mention the requested subject ({', '.join(sorted(missing_subjects)[:3])}).",
-                closest
-            )
-
-        if token_coverage < 0.2 and top_score < 0.32 and top_keyword < 0.2:
-            missing_tokens = [token for token in q_tokens if token not in combined_corpus]
-            return (
-                True,
-                f"Retrieved passages do not contain enough of the query's key terms ({', '.join(sorted(missing_tokens)[:3])}).",
+                "The retrieved passages do not contain enough of the question's key terms"
+                + (f" ({', '.join(missing_tokens[:4])})." if missing_tokens else "."),
                 closest
             )
 
@@ -215,7 +271,8 @@ class GroundedGenerator:
         question: str,
         citations: List[Citation],
         conflicts: List[ConflictItem],
-        answer_mode: str = "grounded"
+        answer_mode: str = "grounded",
+        temperature: float = 0.2
     ) -> Tuple[str, str]:
         """Returns (answer_text, generation_mode)."""
         if answer_mode == "exact":
@@ -232,11 +289,13 @@ class GroundedGenerator:
         if config.gemini_api_key:
             try:
                 from google import genai
+                from google.genai import types
                 client = genai.Client(api_key=config.gemini_api_key)
                 prompt = self._build_grounded_prompt(question, citations, conflicts)
                 response = client.models.generate_content(
                     model=config.gemini_model,
-                    contents=prompt
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=max(0.0, min(2.0, temperature)))
                 )
                 if response.text:
                     answer = response.text.strip()

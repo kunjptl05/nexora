@@ -11,11 +11,13 @@ class ConflictRadar:
 
     def _extract_domain(self, text: str, doc_title: str) -> str:
         combined = (text + " " + doc_title).lower()
-        if any(k in combined for k in ["solar", "photovoltaic", "pv", "panel", "perovskite", "monocrystalline"]):
+        # Use token/phrase boundaries: e.g. "pv" must not match "pvc",
+        # "auth" must not match "author", and "cycle" must not match "bicycle".
+        if re.search(r"\b(solar|photovoltaic|pv|panel|perovskite|monocrystalline)\b", combined):
             return "solar_pv"
-        if any(k in combined for k in ["battery", "bess", "lfp", "grid storage", "roundtrip", "cycle", "cooling"]):
+        if re.search(r"\b(battery|batteries|bess|lfp|roundtrip|cycle|cycles|cooling)\b|\bgrid\s+storage\b", combined):
             return "battery_storage"
-        if any(k in combined for k in ["auth", "jwt", "gateway", "token", "session", "redis", "latency"]):
+        if re.search(r"\b(auth|authentication|jwt|gateway|token|session|redis|latency)\b", combined):
             return "software_auth"
         return "general"
 
@@ -45,10 +47,12 @@ class ConflictRadar:
 
         # Check if the query is an isolated single-version query (e.g. only mentions '2023 guidelines')
         years_in_query = re.findall(r'\b(202[0-9])\b', query)
-        is_comparative = any(w in query.lower() for w in [
-            "compare", "vs", "versus", "between", "difference", "discrepancy", 
-            "contradict", "change", "updated", "revision", "how much", "what are the"
-        ]) or len(years_in_query) >= 2
+        is_comparative = bool(re.search(
+            r"\b(compare|compared|vs\.?|versus|between|difference|differences|discrepancy|"
+            r"contradict|conflict|change|changed|updated|revision)\b",
+            query,
+            re.IGNORECASE
+        )) or len(years_in_query) >= 2
 
         # If user explicitly asked only about a single year/standard without comparison words, don't invent conflict
         if len(years_in_query) == 1 and not is_comparative:

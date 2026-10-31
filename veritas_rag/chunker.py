@@ -3,6 +3,7 @@ import io
 import hashlib
 from typing import List, Tuple, Dict, Any, Optional
 from veritas_rag.models import DocumentChunk
+from veritas_rag.config import config
 
 
 class Chunker:
@@ -222,24 +223,58 @@ class Chunker:
         return "\n\n".join(full_text_parts), pages_content
 
     def _split_by_sections(self, content: str) -> List[Tuple[str, str]]:
-        lines = content.split('\n')
-        sections = []
+        lines = content.split("\n")
+        sections: List[Tuple[str, str]] = []
         current_title = "Overview"
-        current_lines = []
+        current_lines: List[str] = []
+        known_sections = {
+            "candidate details", "hsc details", "admission details", "documents",
+            "declaration", "executive summary", "technical specifications",
+            "technical specifications & efficiency", "storage overview",
+            "roundtrip efficiency & metrics", "degradation rates & lifecycle",
+            "capital expenditure trends", "warranty and guarantee standards",
+            "financial subsidies & rebates", "grid interconnection requirements"
+        }
+
+        def flush_section() -> None:
+            nonlocal current_lines
+            if current_lines:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+                current_lines = []
 
         for line in lines:
-            header_match = re.match(r'^(#{1,4})\s+(.+)$', line.strip())
-            if header_match:
-                if current_lines:
-                    sections.append((current_title, "\n".join(current_lines)))
-                    current_lines = []
-                current_title = header_match.group(2).strip()
-            else:
+            stripped = line.strip()
+            if not stripped:
                 current_lines.append(line)
+                continue
 
-        if current_lines:
-            sections.append((current_title, "\n".join(current_lines)))
+            markdown_heading = re.match(r"^(#{1,4})\s+(.+)$", stripped)
+            prefix_heading = re.match(
+                r"^([A-Za-z][A-Za-z0-9 &/().-]{2,70})\s*[:：]\s*(.*)$", stripped
+            )
+            prefix_name = (
+                prefix_heading.group(1).strip().casefold()
+                if prefix_heading else ""
+            )
+            if markdown_heading:
+                flush_section()
+                current_title = markdown_heading.group(2).strip()
+                continue
+            if prefix_heading and prefix_name in known_sections:
+                flush_section()
+                current_title = prefix_heading.group(1).strip()
+                remainder = prefix_heading.group(2).strip()
+                if remainder:
+                    current_lines.append(remainder)
+                continue
+            if stripped.isupper() and len(stripped) <= 80 and len(re.findall(r"[A-Z]", stripped)) >= 5:
+                flush_section()
+                current_title = stripped.title()
+                continue
 
+            current_lines.append(line)
+
+        flush_section()
         return sections if sections else [("Overview", content)]
 
     def _word_boundary_overlap(self, text: str, overlap_size: int) -> str:
@@ -294,4 +329,4 @@ class Chunker:
         return [t for t, _ in self._split_large_paragraph_indexed(text, size, overlap, 0)]
 
 
-chunker = Chunker()
+chunker = Chunker(chunk_size=config.chunk_size, chunk_overlap=config.chunk_overlap)

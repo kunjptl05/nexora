@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
+from veritas_rag.config import config
 import uuid
 import time
 
@@ -82,9 +83,9 @@ class QueryRequest(BaseModel):
     question: str
     filters: Optional[SearchFilters] = None
     use_hybrid: bool = True
-    top_k: int = Field(default=5, ge=1, le=50)
+    top_k: int = Field(default=config.top_k, ge=1, le=50)
     answer_mode: Literal["grounded", "exact"] = "grounded"
-    temperature: float = 0.2
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
 class QueryResponse(BaseModel):
     query_id: str = Field(default_factory=lambda: f"qry_{uuid.uuid4().hex[:8]}")

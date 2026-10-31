@@ -24,6 +24,7 @@ from veritas_rag.conflict_radar import conflict_radar
 from veritas_rag.generator import generator
 from veritas_rag.evaluator import benchmark_evaluator
 from veritas_rag.samples import load_sample_datasets
+from veritas_rag.field_extractor import detect_field_intent
 
 # Modern FastAPI Lifespan Handler
 @asynccontextmanager
@@ -300,18 +301,39 @@ def get_chunk_details(chunk_id: str):
 # 6. Core RAG Query Endpoint
 @app.post("/api/query", response_model=QueryResponse)
 def query_rag(req: QueryRequest):
+    # Direct field lookup is more reliable than semantic retrieval for form questions
+    # such as "What is the name of the person in this document?".
+    field_intent = detect_field_intent(req.question)
+    if field_intent:
+        field_matches = storage_service.search_labelled_fields(field_intent, req.filters)
+        if field_matches:
+            response = generator.generate_field_response(
+                question=req.question,
+                field_matches=field_matches,
+                explain_search={
+                    "retrieval_mode": "structured_field_lookup",
+                    "field_key": field_intent,
+                    "field_matches": len(field_matches),
+                    "filters_applied": req.filters.model_dump() if req.filters else None,
+                },
+                answer_mode=req.answer_mode,
+            )
+            storage_service.store_query_result(response.query_id, response)
+            return response
+
     citations, explain_search = storage_service.hybrid_search(
         query=req.question,
         filters=req.filters,
         top_k=req.top_k,
         use_hybrid=req.use_hybrid
     )
-    
+
     response = generator.generate_response(
         question=req.question,
         citations=citations,
         explain_search=explain_search,
-        answer_mode=req.answer_mode
+        answer_mode=req.answer_mode,
+        temperature=req.temperature
     )
     # Store in server-side query history for authentic report generation
     storage_service.store_query_result(response.query_id, response)
