@@ -87,7 +87,7 @@ class GroundedAnswerTests(unittest.TestCase):
             "What are the components of the battery?", [citation("LFP and sodium-ion battery chemistries.")], []
         )
         self.assertIn("Enumerate every distinct item explicitly named", prompt)
-        self.assertIn("not internal components", prompt)
+        self.assertIn("not internal cell components", prompt)
         self.assertIn("Do not supply a generic textbook list", prompt)
 
 
