@@ -54,7 +54,7 @@ async function fetchStatus() {
         sidebarStatus.className = "font-bold text-[10.5px] text-emerald-200";
       }
       if (sidebarDot) sidebarDot.className = "w-2 h-2 rounded-full bg-amber-400";
-      if (kbHeadline) kbHeadline.textContent = "Local In-Memory Vector + BM25 Engine (Zero-Config Active)";
+      if (kbHeadline) kbHeadline.textContent = "Local Vector + BM25 (Persistent Local Store)";
     }
 
     if (sidebarStats) {
