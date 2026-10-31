@@ -53,7 +53,7 @@ Install the dependencies in a virtual environment:
 ```powershell
 cd "C:\path\to\nexora"
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+./.venv/Scripts/Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -61,7 +61,7 @@ pip install -r requirements.txt
 If PowerShell blocks activation, run the app using the venv interpreter directly:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
 
 ## Configuration (optional)
