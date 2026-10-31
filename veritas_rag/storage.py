@@ -426,9 +426,13 @@ class StorageService:
         Returns top citations and a complete retrieval trace for 'Explain Vector Search Results'.
         """
         start_time = time.perf_counter()
-        query_embedding = embedding_service.get_embedding(query)
-        embed_time = (time.perf_counter() - start_time) * 1000
-        self._validate_embedding_space(query_embedding, filters)
+        if search_mode == "lexical":
+            query_embedding = []
+            embed_time = 0.0
+        else:
+            query_embedding = embedding_service.get_embedding(query)
+            embed_time = (time.perf_counter() - start_time) * 1000
+            self._validate_embedding_space(query_embedding, filters)
 
         # Build sample / actual MongoDB $vectorSearch aggregation pipeline
         mongo_filter = self._build_mongo_filter(filters)
