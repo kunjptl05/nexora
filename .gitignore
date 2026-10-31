@@ -20,3 +20,14 @@ Thumbs.db
 # Environment Variables & Secrets
 .env
 *.local
+
+# Local document content and runtime state (may contain private uploads)
+data_store.json
+uploads/
+reports/
+*.sqlite
+*.sqlite3
+
+# Environment files (keep examples only)
+.env.*
+!.env.example
