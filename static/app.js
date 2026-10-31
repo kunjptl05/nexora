@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initApp() {
+  initWorkspacePanels();
   await fetchStatus();
   await loadDocuments();
   initDefaultConflictDashboard();
@@ -105,7 +106,7 @@ function switchTab(tabId) {
   const viewSubtext = document.getElementById('currentViewSubtext');
   if (viewTitle && titles[tabId]) {
     viewTitle.innerHTML = `<i data-lucide="${titles[tabId].icon}" class="w-4 h-4 text-emerald-700"></i><span>${titles[tabId].title}</span>`;
-    viewSubtext.textContent = titles[tabId].subtext;
+    if (viewSubtext) viewSubtext.textContent = titles[tabId].subtext;
   }
 
   tabs.forEach(t => {
@@ -127,7 +128,155 @@ function switchTab(tabId) {
   lucide.createIcons();
 }
 
+// ----------------- RESIZABLE / COLLAPSIBLE WORKSPACE PANELS -----------------
+
+const workspacePanelState = {
+  documents: { open: true, width: 260, min: 180, max: 520 },
+  chat: { open: true },
+  evidence: { open: true, width: 360, min: 240, max: 560 }
+};
+
+function initWorkspacePanels() {
+  const workspace = document.getElementById('tab-chat');
+  if (!workspace || workspace.dataset.panelsReady === 'true') return;
+  workspace.dataset.panelsReady = 'true';
+
+  if (window.innerWidth <= 680) {
+    workspacePanelState.documents.width = 190;
+    workspacePanelState.evidence.width = 280;
+    workspacePanelState.evidence.open = false;
+  } else if (window.innerWidth <= 900) {
+    workspacePanelState.documents.width = 220;
+    workspacePanelState.evidence.width = 300;
+  }
+
+  const docsHandle = document.getElementById('resize-documents');
+  const evidenceHandle = document.getElementById('resize-evidence');
+
+  const attachResize = (handle, panelKey, edge) => {
+    if (!handle) return;
+
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = workspacePanelState[panelKey].width;
+      document.body.classList.add('panel-resizing');
+
+      const move = (moveEvent) => {
+        const delta = moveEvent.clientX - startX;
+        const rawWidth = edge === 'left'
+          ? startWidth + delta
+          : startWidth - delta;
+        workspacePanelState[panelKey].width = Math.max(
+          workspacePanelState[panelKey].min,
+          Math.min(workspacePanelState[panelKey].max, rawWidth)
+        );
+        renderWorkspacePanels();
+      };
+
+      const stop = () => {
+        document.body.classList.remove('panel-resizing');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+      };
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    });
+
+    handle.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const direction = event.key === 'ArrowRight' ? 1 : -1;
+      const state = workspacePanelState[panelKey];
+      const multiplier = event.shiftKey ? 48 : 16;
+      state.width = Math.max(state.min, Math.min(state.max, state.width + direction * multiplier * (edge === 'left' ? 1 : -1)));
+      renderWorkspacePanels();
+    });
+  };
+
+  attachResize(docsHandle, 'documents', 'left');
+  attachResize(evidenceHandle, 'evidence', 'right');
+  renderWorkspacePanels();
+}
+
+function toggleWorkspacePanel(panelKey) {
+  const state = workspacePanelState[panelKey];
+  if (!state) return;
+  state.open = !state.open;
+  renderWorkspacePanels();
+}
+
+function renderWorkspacePanels() {
+  const workspace = document.getElementById('tab-chat');
+  if (!workspace) return;
+
+  const docs = workspacePanelState.documents;
+  const chat = workspacePanelState.chat;
+  const evidence = workspacePanelState.evidence;
+
+  const docPanel = document.getElementById('panel-documents');
+  const chatPanel = document.getElementById('panel-chat');
+  const evidencePanel = document.getElementById('panel-evidence');
+  const docHandle = document.getElementById('resize-documents');
+  const evidenceHandle = document.getElementById('resize-evidence');
+
+  const setPanel = (element, open) => {
+    if (!element) return;
+    element.classList.toggle('is-collapsed', !open);
+    element.setAttribute('aria-hidden', String(!open));
+    element.inert = !open;
+  };
+
+  setPanel(docPanel, docs.open);
+  setPanel(chatPanel, chat.open);
+  setPanel(evidencePanel, evidence.open);
+
+  const showDocHandle = docs.open && chat.open;
+  const showEvidenceHandle = chat.open && evidence.open;
+  if (docHandle) {
+    docHandle.classList.toggle('is-hidden', !showDocHandle);
+    docHandle.setAttribute('aria-hidden', String(!showDocHandle));
+  }
+  if (evidenceHandle) {
+    evidenceHandle.classList.toggle('is-hidden', !showEvidenceHandle);
+    evidenceHandle.setAttribute('aria-hidden', String(!showEvidenceHandle));
+  }
+
+  const docWidth = docs.open ? `${Math.round(docs.width)}px` : '0px';
+  const evidenceWidth = evidence.open ? `${Math.round(evidence.width)}px` : '0px';
+  const docGap = showDocHandle ? '7px' : '0px';
+  const evidenceGap = showEvidenceHandle ? '7px' : '0px';
+  const chatWidth = chat.open ? 'minmax(0, 1fr)' : '0px';
+  workspace.style.gridTemplateColumns = `${docWidth} ${docGap} ${chatWidth} ${evidenceGap} ${evidenceWidth}`;
+
+  const restore = {
+    documents: document.getElementById('restore-documents'),
+    chat: document.getElementById('restore-chat'),
+    evidence: document.getElementById('restore-evidence')
+  };
+  Object.entries(restore).forEach(([key, button]) => {
+    if (button) button.classList.toggle('is-visible', !workspacePanelState[key].open);
+  });
+
+  const docsButton = docPanel?.querySelector('[aria-label="Close Indexed Documents"]');
+  const chatButton = chatPanel?.querySelector('[aria-label="Close Conversation"]');
+  const evidenceButton = evidencePanel?.querySelector('[aria-label="Close Evidence Inspector"]');
+  if (docsButton) docsButton.title = 'Close Indexed Documents';
+  if (chatButton) chatButton.title = 'Close Conversation';
+  if (evidenceButton) evidenceButton.title = 'Close Evidence Inspector';
+
+  // Keep the visual handles aligned with the panel boundaries after width changes.
+  if (docHandle) docHandle.setAttribute('aria-valuenow', String(Math.round(docs.width)));
+  if (evidenceHandle) evidenceHandle.setAttribute('aria-valuenow', String(Math.round(evidence.width)));
+}
+
 // ----------------- PANEL A: DOCUMENT SCOPE -----------------
+
+
 
 function renderScopeChecklist() {
   const container = document.getElementById('scopeDocsList');
