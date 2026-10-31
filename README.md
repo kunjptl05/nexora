@@ -97,7 +97,7 @@ For Atlas lexical search, create a Search index named `chunk_text` on `content`,
 
 ## Run locally
 
-The repository includes a Windows launcher:
+The Windows launcher creates the `.venv` environment when needed, checks/installs the requirements, and starts the local FastAPI server:
 
 ```powershell
 .\run.bat
