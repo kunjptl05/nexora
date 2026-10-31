@@ -603,10 +603,11 @@ class StorageService:
 
         # Sort candidates
         sorted_chunks = sorted(candidates, key=lambda c: rrf_scores.get(c.id, 0.0), reverse=True)
+        sorted_chunks = self._diversify_results(sorted_chunks, top_k, query)
         results = []
         post_rrf_trace = []
 
-        for rank_idx, c in enumerate(sorted_chunks[:top_k]):
+        for rank_idx, c in enumerate(sorted_chunks):
             v_score = vector_scores.get(c.id, 0.0)
             k_score = kw_scores.get(c.id, 0.0)
             rrf_score = rrf_scores.get(c.id, 0.0)
@@ -669,24 +670,26 @@ class StorageService:
             return [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor], pipeline
 
         if search_mode == "lexical":
-            pipeline = [{
-                "$search": {
-                    "index": "chunk_text",
+            search_compound = {
+                "must": [{
                     "text": {"query": query, "path": ["content", "doc_title", "section"]}
-                }
-            }]
-            if mongo_filter:
-                pipeline.append({"$match": mongo_filter})
-            pipeline.extend([
-                {"$limit": top_k},
+                }]
+            }
+            atlas_filters = self._build_atlas_search_filters(filters)
+            if atlas_filters:
+                search_compound["filter"] = atlas_filters
+            pipeline = [
+                {"$search": {"index": "chunk_text", "compound": search_compound}},
+                {"$limit": top_k * 4},
                 {"$project": {
                     "id": 1, "doc_id": 1, "doc_title": 1, "section": 1,
                     "page_number": 1, "content": 1, "metadata": 1,
                     "score": {"$meta": "searchScore"}
                 }}
-            ])
+            ]
             cursor = self.collection.aggregate(pipeline)
-            return [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor], pipeline
+            results = [self._atlas_citation(doc, doc.get("score", 0.0)) for doc in cursor]
+            return self._diversify_results(results, top_k, query), pipeline
 
         # Use MongoDB $rankFusion for hybrid retrieval.
         try:
@@ -702,20 +705,21 @@ class StorageService:
             if mongo_filter:
                 vector_sub["$vectorSearch"]["filter"] = mongo_filter
 
-            keyword_sub = [
-                {
-                    "$search": {
-                        "index": "chunk_text",
-                        "text": {
-                            "query": query,
-                            "path": ["content", "doc_title", "section"]
-                        }
+            search_compound = {
+                "must": [{
+                    "text": {
+                        "query": query,
+                        "path": ["content", "doc_title", "section"]
                     }
-                },
+                }]
+            }
+            atlas_filters = self._build_atlas_search_filters(filters)
+            if atlas_filters:
+                search_compound["filter"] = atlas_filters
+            keyword_sub = [
+                {"$search": {"index": "chunk_text", "compound": search_compound}},
                 {"$limit": top_k * 4}
             ]
-            if mongo_filter:
-                keyword_sub[0]["$search"]["filter"] = mongo_filter  # type: ignore[index]
 
             pipeline = [
                 {
@@ -735,7 +739,7 @@ class StorageService:
                         "scoreDetails": True
                     }
                 },
-                {"$limit": top_k},
+                {"$limit": top_k * 4},
                 {
                     "$project": {
                         "id": 1,
@@ -772,7 +776,7 @@ class StorageService:
                 print(f"[StorageService] WARNING: Atlas $rankFusion returned 0 results for query: '{query[:80]}' — "
                       "check that the Atlas vector index exists and chunks are inserted.")
 
-            return results, pipeline
+            return self._diversify_results(results, top_k, query), pipeline
 
         except Exception as rank_fusion_err:
             raise RuntimeError(
@@ -791,6 +795,61 @@ class StorageService:
             combined_score=round(float(score), 4),
             metadata=doc.get("metadata", {})
         )
+
+    def _build_atlas_search_filters(self, filters: Optional[SearchFilters]) -> List[Dict[str, Any]]:
+        """Translate document filters to Atlas Search compound.filter clauses."""
+        if not filters:
+            return []
+        clauses: List[Dict[str, Any]] = []
+        if filters.category:
+            clauses.append({"equals": {"path": "metadata.category", "value": filters.category}})
+        if filters.min_year or filters.max_year:
+            year_range: Dict[str, Any] = {"path": "metadata.year"}
+            if filters.min_year:
+                year_range["gte"] = filters.min_year
+            if filters.max_year:
+                year_range["lte"] = filters.max_year
+            clauses.append({"range": year_range})
+        if filters.doc_ids:
+            clauses.append({"in": {"path": "doc_id", "value": filters.doc_ids}})
+        return clauses
+
+    def _is_comparative_query(self, query: str) -> bool:
+        return bool(re.search(
+            r"\b(compare|compared|versus|vs\.?|between|difference|differences|discrepancy|"
+            r"contradict|conflict|changed? from|updated from|higher than|lower than)\b",
+            query,
+            re.IGNORECASE
+        ))
+
+    def _diversify_results(self, results: List[Any], top_k: int, query: str) -> List[Any]:
+        """Cap early results per document for comparisons, then backfill to top_k."""
+        if len(results) <= top_k or not self._is_comparative_query(query):
+            return results[:top_k]
+
+        per_document_cap = max(1, math.ceil(top_k / 2))
+        selected: List[Any] = []
+        selected_ids = set()
+        counts: Dict[str, int] = {}
+
+        for item in results:
+            doc_id = getattr(item, "doc_id", None)
+            if counts.get(doc_id, 0) >= per_document_cap:
+                continue
+            selected.append(item)
+            selected_ids.add(getattr(item, "id", id(item)))
+            counts[doc_id] = counts.get(doc_id, 0) + 1
+            if len(selected) >= top_k:
+                return selected
+
+        for item in results:
+            item_id = getattr(item, "id", id(item))
+            if item_id in selected_ids:
+                continue
+            selected.append(item)
+            if len(selected) >= top_k:
+                break
+        return selected
 
     def _build_mongo_filter(self, filters: Optional[SearchFilters]) -> Dict[str, Any]:
         if not filters:
