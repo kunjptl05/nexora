@@ -295,6 +295,7 @@ class StorageService:
             try:
                 self.collection.delete_many({"doc_id": doc_id})
                 self.db["documents"].delete_one({"id": doc_id})
+                self.db["field_extractions"].delete_many({"doc_id": doc_id})
             except Exception as exc:
                 print(f"[StorageService] Failed to delete document from Atlas: {exc}")
         return True
@@ -369,6 +370,15 @@ class StorageService:
                     }
                 )
                 self._field_chunks[chunk_id] = field_chunk
+                if self.is_connected and self.db is not None:
+                    try:
+                        self.db["field_extractions"].update_one(
+                            {"id": chunk_id},
+                            {"$set": field_chunk.model_dump()},
+                            upsert=True
+                        )
+                    except Exception as exc:
+                        raise RuntimeError(f"Could not persist field evidence for {doc_id}: {exc}") from exc
                 citation = Citation(
                     id=chunk_id,
                     doc_id=doc_id,
@@ -400,6 +410,13 @@ class StorageService:
     def get_chunk(self, chunk_id: str) -> Optional[DocumentChunk]:
         if chunk_id in self._field_chunks:
             return self._field_chunks[chunk_id]
+        if chunk_id.startswith("fld_") and self.is_connected and self.db is not None:
+            try:
+                record = self.db["field_extractions"].find_one({"id": chunk_id}, {"_id": 0})
+                if record:
+                    return DocumentChunk(**record)
+            except Exception as exc:
+                print(f"[StorageService] Atlas field evidence lookup failed: {exc}")
         chunk = self._chunks.get(chunk_id)
         if chunk is not None:
             return chunk
