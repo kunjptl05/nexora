@@ -59,7 +59,7 @@ def get_status():
         "app_name": config.app_name,
         "tagline": config.tagline,
         "version": config.version,
-        "mongodb_headline": "MongoDB Atlas Vector Search: connected" if storage_service.is_connected else "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)",
+        "mongodb_headline": "MongoDB Atlas Vector Search: connected" if storage_service.is_connected else "Local Vector + BM25 (Persistent Local Store)",
         "storage_mode": storage_service.active_mode,
         "mongodb_connected": storage_service.is_connected,
         "mongodb_database": config.mongodb_database,
@@ -82,7 +82,7 @@ def update_mongodb(data: dict):
 
     if not uri:
         storage_service.is_connected = False
-        storage_service.active_mode = "Local In-Memory Vector & BM25 Fallback (Zero-Config Active)"
+        storage_service.active_mode = "Local Vector + BM25 (Persistent Local Store)"
         return {"success": True, "mode": storage_service.active_mode, "message": "Reverted to Local In-Memory Fallback Mode."}
 
     config.mongodb_uri = uri
