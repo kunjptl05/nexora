@@ -20,8 +20,7 @@ class AppConfig(BaseModel):
     # Tuning Parameters
     chunk_size: int = 900
     chunk_overlap: int = 150
-    similarity_threshold: float = 0.45
-    top_k: int = 5
-    abstention_threshold: float = 0.15
+    top_k: int = int(os.getenv("TOP_K", "5"))
+    abstention_threshold: float = float(os.getenv("ABSTENTION_TOKEN_COVERAGE", "0.15"))
 
 config = AppConfig()
