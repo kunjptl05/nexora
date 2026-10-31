@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from veritas_rag.generator import GroundedGenerator
 from veritas_rag.models import Citation
@@ -81,6 +82,20 @@ class GroundedAnswerTests(unittest.TestCase):
         self.assertIn(source, answer)
         self.assertIn("Grid Storage Technical Whitepaper", answer)
         self.assertIn("Page 4", answer)
+
+    def test_battery_component_question_uses_structured_path_even_with_gemini_configured(self):
+        source = (
+            "Large-scale lithium iron phosphate (LFP) and sodium-ion battery "
+            "chemistries are used for grid storage."
+        )
+        with patch("veritas_rag.generator.config.gemini_api_key", "test-key"):
+            answer, mode = self.generator._synthesize_answer(
+                "What are the components of the battery?", [citation(source)], []
+            )
+
+        self.assertEqual(mode, "local-grounded-structured")
+        self.assertIn("sodium-ion", answer)
+        self.assertNotIn("- **anode**", answer)
 
     def test_component_prompt_requires_a_complete_supported_list(self):
         prompt = self.generator._build_grounded_prompt(
