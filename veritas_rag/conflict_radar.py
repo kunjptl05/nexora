@@ -120,12 +120,13 @@ class ConflictRadar:
                         delta_str = None
                         if e1["numeric_val"] is not None and e2["numeric_val"] is not None:
                             # Order by year/revision if available
-                            if e2["year"] >= e1["year"]:
-                                diff = e2["numeric_val"] - e1["numeric_val"]
-                                older, newer = e1, e2
-                            else:
+                            if (e1["year"] is not None and e2["year"] is not None
+                                    and e2["year"] < e1["year"]):
                                 diff = e1["numeric_val"] - e2["numeric_val"]
                                 older, newer = e2, e1
+                            else:
+                                diff = e2["numeric_val"] - e1["numeric_val"]
+                                older, newer = e1, e2
                             
                             sign = "+" if diff > 0 else ""
                             if "%" in (older["unit"] + newer["unit"]):
